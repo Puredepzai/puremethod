@@ -3,8 +3,9 @@
     "version": "1.3.0",
     "type": "module",
     "scripts": {
+        "generate-changelog": "node scripts/generate-changelog.mjs",
         "dev": "vite",
-        "build": "vite build",
+        "build": "npm run generate-changelog && vite build",
         "preview": "vite preview",
         "test": "vitest run",
         "lint": "biome check ."
