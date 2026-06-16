@@ -21,10 +21,24 @@ import {
     pruneOldRecords,
     saveRecord,
 } from "./db.js";
-import { parseBoxes, getBoxHeaderSize, updateBoxSize, updateChunkOffsets } from "./src/mp4-boxes.mjs";
-import { buildEdtsAtom, rebuildWithElstBypass, patchMvhdMatrix } from "./src/mp4-patches.mjs";
-import { stripUdtaAtom, injectCommentUdta, stripTkhdMatrix } from "./src/mp4-strip.mjs";
+import { initChangelog } from "./src/changelog.mjs";
+import {
+    getBoxHeaderSize,
+    parseBoxes,
+    updateBoxSize,
+    updateChunkOffsets,
+} from "./src/mp4-boxes.mjs";
 import { inflateSampleTableVideo } from "./src/mp4-inflate.mjs";
+import {
+    buildEdtsAtom,
+    patchMvhdMatrix,
+    rebuildWithElstBypass,
+} from "./src/mp4-patches.mjs";
+import {
+    injectCommentUdta,
+    stripTkhdMatrix,
+    stripUdtaAtom,
+} from "./src/mp4-strip.mjs";
 
 const FRAME_CAPTURE_TIMEOUT_MS = 5000;
 const METADATA_TIMEOUT_MS = 10000;
@@ -115,7 +129,9 @@ function initializeApp() {
     refreshIcons();
     pruneOldRecords()
         .then(() => renderHistoryList())
-        .catch(err => logMessage(`History pruning failed: ${err.message}`, "warning"));
+        .catch((err) =>
+            logMessage(`History pruning failed: ${err.message}`, "warning"),
+        );
     adjustMobileLayout();
     window.addEventListener("resize", adjustMobileLayout);
 }
@@ -167,7 +183,7 @@ function getMimeType(file) {
 }
 
 function getOutputFilename(file) {
-    const lastDotIndex = file.name.lastIndexOf('.');
+    const lastDotIndex = file.name.lastIndexOf(".");
     if (lastDotIndex <= 0) return file.name + outputSuffix;
     const name = file.name.substring(0, lastDotIndex);
     const ext = file.name.substring(lastDotIndex);
@@ -249,7 +265,6 @@ function formatFileSize(bytes) {
     if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
     return `${(bytes / 1024).toFixed(1)} KB`;
 }
-
 
 function downloadBuffer(data, filename, mimeType) {
     const blob =
@@ -509,7 +524,12 @@ function parseMp4Boxes(bytes, view, start, end) {
             sz = end - pos;
         }
         if (sz < hdr || pos + sz > end) break;
-        const type = String.fromCharCode(bytes[pos+4], bytes[pos+5], bytes[pos+6], bytes[pos+7]);
+        const type = String.fromCharCode(
+            bytes[pos + 4],
+            bytes[pos + 5],
+            bytes[pos + 6],
+            bytes[pos + 7],
+        );
         boxes.push({ offset: pos, size: sz, type, end: pos + sz, hdr });
         pos += sz;
     }
@@ -518,21 +538,36 @@ function parseMp4Boxes(bytes, view, start, end) {
 
 function getDimensionsFromMp4Container(bytes, view) {
     const top = parseMp4Boxes(bytes, view, 0, bytes.length);
-    const moov = top.find(b => b.type === 'moov');
+    const moov = top.find((b) => b.type === "moov");
     if (!moov) return null;
 
     const moovCh = parseMp4Boxes(bytes, view, moov.offset + moov.hdr, moov.end);
-    for (const trak of moovCh.filter(b => b.type === 'trak')) {
-        const tch = parseMp4Boxes(bytes, view, trak.offset + trak.hdr, trak.end);
-        const tkhd = tch.find(b => b.type === 'tkhd');
-        const mdia = tch.find(b => b.type === 'mdia');
+    for (const trak of moovCh.filter((b) => b.type === "trak")) {
+        const tch = parseMp4Boxes(
+            bytes,
+            view,
+            trak.offset + trak.hdr,
+            trak.end,
+        );
+        const tkhd = tch.find((b) => b.type === "tkhd");
+        const mdia = tch.find((b) => b.type === "mdia");
         if (!tkhd || !mdia) continue;
 
-        const mch = parseMp4Boxes(bytes, view, mdia.offset + mdia.hdr, mdia.end);
-        const hdlr = mch.find(b => b.type === 'hdlr');
+        const mch = parseMp4Boxes(
+            bytes,
+            view,
+            mdia.offset + mdia.hdr,
+            mdia.end,
+        );
+        const hdlr = mch.find((b) => b.type === "hdlr");
         if (!hdlr) continue;
-        const tt = String.fromCharCode(bytes[hdlr.offset+16], bytes[hdlr.offset+17], bytes[hdlr.offset+18], bytes[hdlr.offset+19]);
-        if (tt !== 'vide') continue;
+        const tt = String.fromCharCode(
+            bytes[hdlr.offset + 16],
+            bytes[hdlr.offset + 17],
+            bytes[hdlr.offset + 18],
+            bytes[hdlr.offset + 19],
+        );
+        if (tt !== "vide") continue;
 
         const cs = tkhd.offset + tkhd.hdr;
         const ver = bytes[cs];
@@ -589,7 +624,11 @@ function getVideoDurationAndResolution(file) {
             objectUrl = URL.createObjectURL(file);
             const timeoutId = setTimeout(() => {
                 if (containerDims) {
-                    cleanup({ duration: 0, width: containerDims.width, height: containerDims.height });
+                    cleanup({
+                        duration: 0,
+                        width: containerDims.width,
+                        height: containerDims.height,
+                    });
                 } else {
                     cleanup(null);
                 }
@@ -601,17 +640,32 @@ function getVideoDurationAndResolution(file) {
                 const bw = video.videoWidth;
                 const bh = video.videoHeight;
                 const duration = video.duration;
-                if (containerDims && (bw === 0 || bh === 0 || !Number.isFinite(duration))) {
-                    cleanup({ duration: 0, width: containerDims.width, height: containerDims.height });
+                if (
+                    containerDims &&
+                    (bw === 0 || bh === 0 || !Number.isFinite(duration))
+                ) {
+                    cleanup({
+                        duration: 0,
+                        width: containerDims.width,
+                        height: containerDims.height,
+                    });
                 } else if (containerDims) {
-                    cleanup({ duration, width: containerDims.width, height: containerDims.height });
+                    cleanup({
+                        duration,
+                        width: containerDims.width,
+                        height: containerDims.height,
+                    });
                 } else {
                     cleanup({ duration, width: bw, height: bh });
                 }
             };
             video.onerror = () => {
                 if (containerDims) {
-                    cleanup({ duration: 0, width: containerDims.width, height: containerDims.height });
+                    cleanup({
+                        duration: 0,
+                        width: containerDims.width,
+                        height: containerDims.height,
+                    });
                 } else {
                     cleanup(null);
                 }
@@ -702,14 +756,14 @@ async function probeSourceFps(instance, inputName) {
     try {
         await instance.exec(["-i", inputName]);
     } catch (err) {
-        console.error('Failed to probe source FPS:', err);
+        console.error("Failed to probe source FPS:", err);
     }
     instance.off("log", collector);
 
     for (const line of logLines) {
         const match = line.match(/(\d+(?:\.\d+)?)\s+fps/i);
         if (match) {
-            const fps = parseFloat(match[1]);
+            const fps = Number.parseFloat(match[1]);
             if (fps > 0) return fps;
         }
     }
@@ -723,7 +777,7 @@ async function probeInputCodec(instance, inputName) {
     try {
         await instance.exec(["-i", inputName]);
     } catch (err) {
-        console.error('Failed to probe input codec:', err);
+        console.error("Failed to probe input codec:", err);
     }
     instance.off("log", collector);
 
@@ -877,7 +931,9 @@ async function patchSingleFile(item) {
         }
 
         const vfiResEl = document.getElementById("outputResolution");
-        const vfiTargetRes = vfiResEl ? parseInt(vfiResEl.value, 10) : 1080;
+        const vfiTargetRes = vfiResEl
+            ? Number.parseInt(vfiResEl.value, 10)
+            : 1080;
         const workingBuffer = await runVFI(
             item.file,
             videoInfo.width,
@@ -934,14 +990,24 @@ async function patchSingleFile(item) {
             logMessage("  [Pass 4/5] Tkhd Matrix Zero skipped.", "warning");
         }
 
-        const commentResult = injectCommentUdta(finalBytes, finalView, "KwjYwI2DziQ8It5PyJGJgQ");
+        const commentResult = injectCommentUdta(
+            finalBytes,
+            finalView,
+            "KwjYwI2DziQ8It5PyJGJgQ",
+        );
         if (commentResult) {
             finalBuffer = commentResult.newBuffer;
             finalBytes = commentResult.newBytes;
             finalView = new DataView(finalBuffer);
-            logMessage("  [Pass 5/5] Comment Udta Injection: Applied.", "success");
+            logMessage(
+                "  [Pass 5/5] Comment Udta Injection: Applied.",
+                "success",
+            );
         } else {
-            logMessage("  [Pass 5/5] Comment Udta Injection skipped.", "warning");
+            logMessage(
+                "  [Pass 5/5] Comment Udta Injection skipped.",
+                "warning",
+            );
         }
 
         return { finalBuffer, outputName, mimeType };
@@ -956,7 +1022,9 @@ async function patchSingleFile(item) {
     }
 
     const resolutionEl = document.getElementById("outputResolution");
-    const targetRes = resolutionEl ? parseInt(resolutionEl.value, 10) : 1080;
+    const targetRes = resolutionEl
+        ? Number.parseInt(resolutionEl.value, 10)
+        : 1080;
     const resolutionBitrate = { 1080: "14261k", 1440: "25000k" };
     const resolutionMaxrate = { 1080: "15000k", 1440: "27000k" };
     const resolutionBufsize = { 1080: "28000k", 1440: "50000k" };
@@ -965,7 +1033,9 @@ async function patchSingleFile(item) {
     const targetBufsize = resolutionBufsize[targetRes] || "28000k";
 
     const isLandscape = videoInfo.width > videoInfo.height;
-    const scaleFilter = isLandscape ? `scale=-2:${targetRes}` : `scale=${targetRes}:-2`;
+    const scaleFilter = isLandscape
+        ? `scale=-2:${targetRes}`
+        : `scale=${targetRes}:-2`;
 
     logMessage(
         `  Source: ${videoInfo.width}x${videoInfo.height} (${isLandscape ? "landscape" : "portrait"}) → ${isLandscape ? `H:${targetRes}` : `W:${targetRes}`} adaptive`,
@@ -1084,15 +1154,9 @@ async function patchSingleFile(item) {
         finalBuffer = elstResult.newBuffer;
         finalBytes = elstResult.newBytes;
         finalView = new DataView(finalBuffer);
-        logMessage(
-            `  [Pass 2/7] ZeroLoss Track Bypass: Applied.`,
-            "success",
-        );
+        logMessage(`  [Pass 2/7] ZeroLoss Track Bypass: Applied.`, "success");
     } else {
-        logMessage(
-            "  [Pass 2/7] ZeroLoss Track Bypass skipped.",
-            "warning",
-        );
+        logMessage("  [Pass 2/7] ZeroLoss Track Bypass skipped.", "warning");
     }
 
     const quantumResult = patchMvhdMatrix(finalBytes, finalView);
@@ -1129,7 +1193,11 @@ async function patchSingleFile(item) {
         logMessage("  [Pass 6/7] Frame Density Inflation skipped.", "warning");
     }
 
-    const commentResult = injectCommentUdta(finalBytes, finalView, "KwjYwI2DziQ8It5PyJGJgQ");
+    const commentResult = injectCommentUdta(
+        finalBytes,
+        finalView,
+        "KwjYwI2DziQ8It5PyJGJgQ",
+    );
     if (commentResult) {
         finalBuffer = commentResult.newBuffer;
         finalBytes = commentResult.newBytes;
@@ -1230,7 +1298,11 @@ function releaseWakeLock() {
 }
 
 document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && currentFlowState === "patching" && !wakeLock) {
+    if (
+        document.visibilityState === "visible" &&
+        currentFlowState === "patching" &&
+        !wakeLock
+    ) {
         acquireWakeLock();
     }
 });
@@ -1279,8 +1351,11 @@ patchBtn.addEventListener("click", async () => {
             item.checked = true;
             successCount++;
 
-            if (result.finalBuffer && result.finalBuffer.byteLength !== undefined &&
-                result.finalBuffer.byteLength <= MAX_STORAGE_BYTES) {
+            if (
+                result.finalBuffer &&
+                result.finalBuffer.byteLength !== undefined &&
+                result.finalBuffer.byteLength <= MAX_STORAGE_BYTES
+            ) {
                 try {
                     if (isCancelled) break;
                     const blob = new Blob([result.finalBuffer], {
@@ -1383,7 +1458,10 @@ async function renderHistoryList() {
 
         const thumb = document.createElement("div");
         thumb.className = "history-thumbnail";
-        if (record.thumbnail && record.thumbnail.startsWith(SAFE_THUMBNAIL_PREFIX)) {
+        if (
+            record.thumbnail &&
+            record.thumbnail.startsWith(SAFE_THUMBNAIL_PREFIX)
+        ) {
             const img = document.createElement("img");
             img.src = record.thumbnail;
             img.alt = "preview";
@@ -1492,7 +1570,10 @@ const cancelTiktokModalBtn = document.getElementById("cancelTiktokModalBtn");
 const confirmTiktokBtn = document.getElementById("confirmTiktokBtn");
 
 function isMobileDevice() {
-    return window.innerWidth <= MOBILE_BREAKPOINT || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    return (
+        window.innerWidth <= MOBILE_BREAKPOINT ||
+        /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+    );
 }
 
 if (tiktokStudioBtn && tiktokModal) {
@@ -1515,3 +1596,8 @@ if (tiktokStudioBtn && tiktokModal) {
 }
 
 initializeApp();
+
+const changelogContainer = document.getElementById("changelogContainer");
+if (changelogContainer) {
+    initChangelog(changelogContainer);
+}
