@@ -1,4 +1,9 @@
-import { parseBoxes, getBoxHeaderSize, updateBoxSize, updateChunkOffsets } from "./mp4-boxes.mjs";
+import {
+    getBoxHeaderSize,
+    parseBoxes,
+    updateBoxSize,
+    updateChunkOffsets,
+} from "./mp4-boxes.mjs";
 
 export function stripUdtaAtom(inputBytes, inputView) {
     const fileSize = inputBytes.length;
@@ -6,7 +11,12 @@ export function stripUdtaAtom(inputBytes, inputView) {
     const moovBox = topBoxes.find((b) => b.type === "moov");
     if (!moovBox) return null;
 
-    const moovChildren = parseBoxes(inputBytes, inputView, moovBox.offset + getBoxHeaderSize(moovBox), moovBox.end);
+    const moovChildren = parseBoxes(
+        inputBytes,
+        inputView,
+        moovBox.offset + getBoxHeaderSize(moovBox),
+        moovBox.end,
+    );
     const udtaBox = moovChildren.find((b) => b.type === "udta");
     if (!udtaBox) return null;
 
@@ -41,38 +51,62 @@ function buildCommentUdta(commentText) {
     let p = 0;
 
     v.setUint32(p, udtaSize, false);
-    b[p+4]=0x75; b[p+5]=0x64; b[p+6]=0x74; b[p+7]=0x61;
+    b[p + 4] = 0x75;
+    b[p + 5] = 0x64;
+    b[p + 6] = 0x74;
+    b[p + 7] = 0x61;
     p += 8;
 
     v.setUint32(p, metaSize, false);
-    b[p+4]=0x6d; b[p+5]=0x65; b[p+6]=0x74; b[p+7]=0x61;
-    v.setUint32(p+8, 0, false);
+    b[p + 4] = 0x6d;
+    b[p + 5] = 0x65;
+    b[p + 6] = 0x74;
+    b[p + 7] = 0x61;
+    v.setUint32(p + 8, 0, false);
     p += 12;
 
     v.setUint32(p, hdlrSize, false);
-    b[p+4]=0x68; b[p+5]=0x64; b[p+6]=0x6c; b[p+7]=0x72;
-    v.setUint32(p+8, 0, false);
-    v.setUint32(p+12, 0, false);
-    b[p+16]=0x6d; b[p+17]=0x64; b[p+18]=0x69; b[p+19]=0x72;
-    b[p+20]=0x61; b[p+21]=0x70; b[p+22]=0x70; b[p+23]=0x6c;
-    v.setUint32(p+24, 0, false);
-    v.setUint32(p+28, 0, false);
-    b[p+32]=0x00;
+    b[p + 4] = 0x68;
+    b[p + 5] = 0x64;
+    b[p + 6] = 0x6c;
+    b[p + 7] = 0x72;
+    v.setUint32(p + 8, 0, false);
+    v.setUint32(p + 12, 0, false);
+    b[p + 16] = 0x6d;
+    b[p + 17] = 0x64;
+    b[p + 18] = 0x69;
+    b[p + 19] = 0x72;
+    b[p + 20] = 0x61;
+    b[p + 21] = 0x70;
+    b[p + 22] = 0x70;
+    b[p + 23] = 0x6c;
+    v.setUint32(p + 24, 0, false);
+    v.setUint32(p + 28, 0, false);
+    b[p + 32] = 0x00;
     p += hdlrSize;
 
     v.setUint32(p, ilstSize, false);
-    b[p+4]=0x69; b[p+5]=0x6c; b[p+6]=0x73; b[p+7]=0x74;
+    b[p + 4] = 0x69;
+    b[p + 5] = 0x6c;
+    b[p + 6] = 0x73;
+    b[p + 7] = 0x74;
     p += 8;
 
     v.setUint32(p, cmtSize, false);
-    b[p+4]=0xa9; b[p+5]=0x63; b[p+6]=0x6d; b[p+7]=0x74;
+    b[p + 4] = 0xa9;
+    b[p + 5] = 0x63;
+    b[p + 6] = 0x6d;
+    b[p + 7] = 0x74;
     p += 8;
 
     v.setUint32(p, dataSize, false);
-    b[p+4]=0x64; b[p+5]=0x61; b[p+6]=0x74; b[p+7]=0x61;
-    v.setUint32(p+8, 1, false);
-    v.setUint32(p+12, 0, false);
-    b.set(commentBytes, p+16);
+    b[p + 4] = 0x64;
+    b[p + 5] = 0x61;
+    b[p + 6] = 0x74;
+    b[p + 7] = 0x61;
+    v.setUint32(p + 8, 1, false);
+    v.setUint32(p + 12, 0, false);
+    b.set(commentBytes, p + 16);
 
     return b;
 }
@@ -101,7 +135,13 @@ export function injectCommentUdta(inputBytes, inputView, commentText) {
     updateBoxSize(newView, moovBox.offset, moovBox, delta);
 
     if (moovBeforeMdat) {
-        updateChunkOffsets(newBytes, newView, moovBox.offset + getBoxHeaderSize(moovBox), moovBox.end + delta, delta);
+        updateChunkOffsets(
+            newBytes,
+            newView,
+            moovBox.offset + getBoxHeaderSize(moovBox),
+            moovBox.end + delta,
+            delta,
+        );
     }
 
     return { newBuffer, newBytes, newView };
@@ -113,11 +153,21 @@ export function stripTkhdMatrix(bytes, view) {
     const moovBox = topBoxes.find((b) => b.type === "moov");
     if (!moovBox) return { patched: false };
 
-    const moovChildren = parseBoxes(bytes, view, moovBox.offset + getBoxHeaderSize(moovBox), moovBox.end);
+    const moovChildren = parseBoxes(
+        bytes,
+        view,
+        moovBox.offset + getBoxHeaderSize(moovBox),
+        moovBox.end,
+    );
     let patched = false;
 
     for (const trak of moovChildren.filter((b) => b.type === "trak")) {
-        const trakChildren = parseBoxes(bytes, view, trak.offset + getBoxHeaderSize(trak), trak.end);
+        const trakChildren = parseBoxes(
+            bytes,
+            view,
+            trak.offset + getBoxHeaderSize(trak),
+            trak.end,
+        );
         const tkhdBox = trakChildren.find((b) => b.type === "tkhd");
         if (!tkhdBox) continue;
 

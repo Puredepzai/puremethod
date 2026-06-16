@@ -54,17 +54,31 @@ export function updateChunkOffsets(newBytes, newView, boxStart, boxEnd, delta) {
             const count = newView.getUint32(box.offset + headerSize + 4, false);
             for (let i = 0; i < count; i++) {
                 const pos = box.offset + headerSize + 8 + i * 4;
-                newView.setUint32(pos, newView.getUint32(pos, false) + delta, false);
+                newView.setUint32(
+                    pos,
+                    newView.getUint32(pos, false) + delta,
+                    false,
+                );
             }
         } else if (box.type === "co64") {
             const headerSize = getBoxHeaderSize(box);
             const count = newView.getUint32(box.offset + headerSize + 4, false);
             for (let i = 0; i < count; i++) {
                 const pos = box.offset + headerSize + 8 + i * 8;
-                newView.setBigUint64(pos, newView.getBigUint64(pos, false) + BigInt(delta), false);
+                newView.setBigUint64(
+                    pos,
+                    newView.getBigUint64(pos, false) + BigInt(delta),
+                    false,
+                );
             }
         } else if (containerTypes.has(box.type)) {
-            updateChunkOffsets(newBytes, newView, box.offset + getBoxHeaderSize(box), box.end, delta);
+            updateChunkOffsets(
+                newBytes,
+                newView,
+                box.offset + getBoxHeaderSize(box),
+                box.end,
+                delta,
+            );
         }
     }
 }

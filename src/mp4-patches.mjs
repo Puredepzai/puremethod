@@ -1,4 +1,10 @@
-import { parseBoxes, getBoxHeaderSize, updateBoxSize, updateChunkOffsets, getTkhdDuration } from "./mp4-boxes.mjs";
+import {
+    getBoxHeaderSize,
+    getTkhdDuration,
+    parseBoxes,
+    updateBoxSize,
+    updateChunkOffsets,
+} from "./mp4-boxes.mjs";
 
 export function buildEdtsAtom(duration, mediaTime = 0) {
     const useVersion1 = duration > 0xffffffff;
@@ -9,9 +15,15 @@ export function buildEdtsAtom(duration, mediaTime = 0) {
     const v = new DataView(buffer);
 
     v.setUint32(0, edtsSize, false);
-    b[4] = 0x65; b[5] = 0x64; b[6] = 0x74; b[7] = 0x73;
+    b[4] = 0x65;
+    b[5] = 0x64;
+    b[6] = 0x74;
+    b[7] = 0x73;
     v.setUint32(8, elstSize, false);
-    b[12] = 0x65; b[13] = 0x6c; b[14] = 0x73; b[15] = 0x74;
+    b[12] = 0x65;
+    b[13] = 0x6c;
+    b[14] = 0x73;
+    b[15] = 0x74;
 
     if (useVersion1) {
         v.setUint32(16, 0x01000000, false);
@@ -39,19 +51,36 @@ export function rebuildWithElstBypass(inputBytes, inputView) {
     const mdatBox = topBoxes.find((b) => b.type === "mdat");
     const moovBeforeMdat = mdatBox && moovBox.offset < mdatBox.offset;
 
-    const moovChildren = parseBoxes(inputBytes, inputView, moovBox.offset + getBoxHeaderSize(moovBox), moovBox.end);
+    const moovChildren = parseBoxes(
+        inputBytes,
+        inputView,
+        moovBox.offset + getBoxHeaderSize(moovBox),
+        moovBox.end,
+    );
     const modifications = [];
 
     for (const trak of moovChildren.filter((b) => b.type === "trak")) {
-        const trakChildren = parseBoxes(inputBytes, inputView, trak.offset + getBoxHeaderSize(trak), trak.end);
+        const trakChildren = parseBoxes(
+            inputBytes,
+            inputView,
+            trak.offset + getBoxHeaderSize(trak),
+            trak.end,
+        );
         const tkhdBox = trakChildren.find((b) => b.type === "tkhd");
-        const duration = tkhdBox ? getTkhdDuration(inputBytes, inputView, tkhdBox.offset) : 0;
+        const duration = tkhdBox
+            ? getTkhdDuration(inputBytes, inputView, tkhdBox.offset)
+            : 0;
         const edtsBox = trakChildren.find((b) => b.type === "edts");
         const mdiaBox = trakChildren.find((b) => b.type === "mdia");
 
         let mediaTime = 0;
         if (mdiaBox) {
-            const mdiaChildren = parseBoxes(inputBytes, inputView, mdiaBox.offset + getBoxHeaderSize(mdiaBox), mdiaBox.end);
+            const mdiaChildren = parseBoxes(
+                inputBytes,
+                inputView,
+                mdiaBox.offset + getBoxHeaderSize(mdiaBox),
+                mdiaBox.end,
+            );
             const mdhdBox = mdiaChildren.find((b) => b.type === "mdhd");
             if (mdhdBox) {
                 const mdhdS = mdhdBox.offset + getBoxHeaderSize(mdhdBox);
@@ -64,11 +93,23 @@ export function rebuildWithElstBypass(inputBytes, inputView) {
 
         if (edtsBox) {
             const edtsBytes = buildEdtsAtom(duration, mediaTime);
-            modifications.push({ removeStart: edtsBox.offset, removeEnd: edtsBox.end, trakBox: trak, edtsBytes, addedDelta: edtsBytes.length - edtsBox.size });
+            modifications.push({
+                removeStart: edtsBox.offset,
+                removeEnd: edtsBox.end,
+                trakBox: trak,
+                edtsBytes,
+                addedDelta: edtsBytes.length - edtsBox.size,
+            });
         } else {
             const edtsBytes = buildEdtsAtom(duration, mediaTime);
             const insertAt = mdiaBox ? mdiaBox.offset : trak.end;
-            modifications.push({ removeStart: insertAt, removeEnd: insertAt, trakBox: trak, edtsBytes, addedDelta: edtsBytes.length });
+            modifications.push({
+                removeStart: insertAt,
+                removeEnd: insertAt,
+                trakBox: trak,
+                edtsBytes,
+                addedDelta: edtsBytes.length,
+            });
         }
     }
 
@@ -76,7 +117,10 @@ export function rebuildWithElstBypass(inputBytes, inputView) {
 
     modifications.sort((a, b) => a.removeStart - b.removeStart);
 
-    const totalDelta = modifications.reduce((sum, mod) => sum + mod.addedDelta, 0);
+    const totalDelta = modifications.reduce(
+        (sum, mod) => sum + mod.addedDelta,
+        0,
+    );
     const newBuffer = new ArrayBuffer(fileSize + totalDelta);
     const newBytes = new Uint8Array(newBuffer);
     const newView = new DataView(newBuffer);
@@ -94,17 +138,30 @@ export function rebuildWithElstBypass(inputBytes, inputView) {
 
     let cumulativeDelta = 0;
     for (const mod of modifications) {
-        updateBoxSize(newView, mod.trakBox.offset + cumulativeDelta, mod.trakBox, mod.addedDelta);
+        updateBoxSize(
+            newView,
+            mod.trakBox.offset + cumulativeDelta,
+            mod.trakBox,
+            mod.addedDelta,
+        );
         cumulativeDelta += mod.addedDelta;
     }
 
     updateBoxSize(newView, moovBox.offset, moovBox, totalDelta);
 
     if (moovBeforeMdat) {
-        updateChunkOffsets(newBytes, newView, moovBox.offset + getBoxHeaderSize(moovBox), moovBox.offset + moovBox.size + totalDelta, totalDelta);
+        updateChunkOffsets(
+            newBytes,
+            newView,
+            moovBox.offset + getBoxHeaderSize(moovBox),
+            moovBox.offset + moovBox.size + totalDelta,
+            totalDelta,
+        );
     }
 
-    const replacedCount = modifications.filter((m) => m.removeStart !== m.removeEnd).length;
+    const replacedCount = modifications.filter(
+        (m) => m.removeStart !== m.removeEnd,
+    ).length;
     const injectedCount = modifications.length - replacedCount;
     return { newBytes, newBuffer, replacedCount, injectedCount };
 }
@@ -115,7 +172,12 @@ export function patchMvhdMatrix(bytes, view) {
     const moovBox = topBoxes.find((b) => b.type === "moov");
     if (!moovBox) return null;
 
-    const moovChildren = parseBoxes(bytes, view, moovBox.offset + getBoxHeaderSize(moovBox), moovBox.end);
+    const moovChildren = parseBoxes(
+        bytes,
+        view,
+        moovBox.offset + getBoxHeaderSize(moovBox),
+        moovBox.end,
+    );
     const mvhdBox = moovChildren.find((b) => b.type === "mvhd");
     if (!mvhdBox) return null;
 
@@ -132,7 +194,8 @@ export function patchMvhdMatrix(bytes, view) {
     if (matrixBOffset + 4 > mvhdBox.end) return null;
 
     const previousValue = view.getInt32(matrixBOffset, false);
-    if (previousValue !== 0) return { previousValue, newValue: previousValue, skipped: true };
+    if (previousValue !== 0)
+        return { previousValue, newValue: previousValue, skipped: true };
 
     view.setInt32(matrixBOffset, 1, false);
     return { previousValue, newValue: 1 };
