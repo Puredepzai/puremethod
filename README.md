@@ -4,6 +4,8 @@ NoBlur is a premium, client-side web application that processes MP4 and MOV vide
 
 All processing is performed client-side using JavaScript, ArrayBuffers, Blobs, and FFmpeg.wasm. No data is uploaded to external servers.
 
+![Preview](preview.webp)
+
 ---
 
 ## Technical Architecture
