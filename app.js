@@ -673,7 +673,7 @@ function resolveInputExtension(file) {
     return ".mp4";
 }
 
-async function runVFI(file, width, height, targetRes = 1080) {
+async function runVFI(file, width, height, targetRes = 1080, applyHDR = false) {
     const { fetchFile } = await import("@ffmpeg/util");
 
     let instance;
@@ -683,7 +683,7 @@ async function runVFI(file, width, height, targetRes = 1080) {
         if (isCancelled) throw new Error("Cancelled");
         const ext = resolveInputExtension(file);
         const inputName = `input${ext}`;
-        const outputName = `output${ext}`;
+        const outputName = applyHDR ? "output.mp4" : `output${ext}`;
 
         logMessage("Preparing video data streams...", "info");
         await instance.writeFile(inputName, await fetchFile(file));
@@ -700,43 +700,89 @@ async function runVFI(file, width, height, targetRes = 1080) {
             );
         }
 
-        let filter =
-            "mpdecimate,minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4";
-        if (width > height) {
-            filter = `scale=-2:${targetRes},${filter}`;
+        let filter;
+        if (applyHDR) {
+            filter =
+                "mpdecimate,minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4," +
+                "eq=brightness=0.20:contrast=1.25," +
+                "zscale=transfer=linear," +
+                "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
+                "format=yuv420p10le";
+            if (width > height) {
+                filter = `scale=-2:${targetRes},${filter}`;
+            } else {
+                filter = `scale=${targetRes}:-2,${filter}`;
+            }
         } else {
-            filter = `scale=${targetRes}:-2,${filter}`;
+            filter =
+                "mpdecimate,minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4";
+            if (width > height) {
+                filter = `scale=-2:${targetRes},${filter}`;
+            } else {
+                filter = `scale=${targetRes}:-2,${filter}`;
+            }
         }
 
-        logMessage(
-            "Interpolating video frames to 60fps... This may take up to a minute.",
-            "info",
-        );
+        if (applyHDR) {
+            logMessage(
+                "Interpolating to 60fps and converting to HDR10 (HEVC 10-bit)...",
+                "info",
+            );
+            const args = [
+                "-i",
+                inputName,
+                "-vf",
+                filter,
+                "-c:v",
+                "libx265",
+                "-preset",
+                "superfast",
+                "-crf",
+                "18",
+                "-pix_fmt",
+                "yuv420p10le",
+                "-x265-params",
+                "hdr10=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,50):max-cll=1000,400",
+                "-c:a",
+                ext.toLowerCase() === ".mov" ? "aac" : "copy",
+                ...(ext.toLowerCase() === ".mov" ? ["-b:a", "256k"] : []),
+                "-video_track_timescale",
+                "90000",
+                "-threads",
+                String(threads),
+                outputName,
+            ];
+            await instance.exec(args);
+            logMessage("60fps HDR10 encoding complete.", "success");
+        } else {
+            logMessage(
+                "Interpolating video frames to 60fps... This may take a minute.",
+                "info",
+            );
+            const args = [
+                "-i",
+                inputName,
+                "-vf",
+                filter,
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "20",
+                "-c:a",
+                ext.toLowerCase() === ".mov" ? "aac" : "copy",
+                ...(ext.toLowerCase() === ".mov" ? ["-b:a", "256k"] : []),
+                "-video_track_timescale",
+                "90000",
+                "-threads",
+                String(threads),
+                outputName,
+            ];
+            await instance.exec(args);
+            logMessage("Completed frame processing.", "success");
+        }
 
-        const args = [
-            "-i",
-            inputName,
-            "-vf",
-            filter,
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-crf",
-            "20",
-            "-c:a",
-            ext.toLowerCase() === ".mov" ? "aac" : "copy",
-            ...(ext.toLowerCase() === ".mov" ? ["-b:a", "256k"] : []),
-            "-video_track_timescale",
-            "90000",
-            "-threads",
-            String(threads),
-            outputName,
-        ];
-
-        await instance.exec(args);
-
-        logMessage("Completed frame processing.", "success");
         const thumbnailBuffer = await extractThumbnailFromInstance(
             instance,
             outputName,
@@ -1137,8 +1183,13 @@ async function patchSingleFile(item) {
         if (isCancelled) throw new Error("Cancelled");
     }
 
+    const bothActive = enableInterpolation?.checked && enableHDR?.checked;
+
     if (enableInterpolation?.checked) {
-        logMessage("Starting VFI Engine for 60fps interpolation...", "info");
+        const label = bothActive
+            ? "Starting VFI + HDR10 combined pipeline..."
+            : "Starting VFI Engine for 60fps interpolation...";
+        logMessage(label, "info");
         if (isCancelled) throw new Error("Cancelled");
 
         const fileBytes = new Uint8Array(await item.file.arrayBuffer());
@@ -1153,18 +1204,19 @@ async function patchSingleFile(item) {
             dims.width,
             dims.height,
             targetRes,
+            bothActive,
         );
         sourceBuffer = vfiResult.buffer;
         if (vfiResult.thumbnail) {
             movThumbnailBuffer = vfiResult.thumbnail;
         }
         logMessage(
-            "VFI interpolation complete. Proceeding to binary patch pipeline...",
+            "VFI processing complete. Proceeding to binary patch pipeline...",
             "success",
         );
     }
 
-    if (enableHDR?.checked) {
+    if (enableHDR?.checked && !bothActive) {
         logMessage("Starting HDR10 conversion pipeline...", "info");
         if (isCancelled) throw new Error("Cancelled");
 
