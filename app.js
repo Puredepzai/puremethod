@@ -725,7 +725,8 @@ async function runVFI(file, width, height, targetRes = 1080) {
             "-crf",
             "20",
             "-c:a",
-            "copy",
+            ext.toLowerCase() === ".mov" ? "aac" : "copy",
+            ...(ext.toLowerCase() === ".mov" ? ["-b:a", "256k"] : []),
             "-video_track_timescale",
             "90000",
             "-threads",
@@ -835,7 +836,7 @@ async function runHDR(file, width, height) {
         );
 
         let filter =
-            "eq=brightness=0.20:contrast=1.15:gamma=0.85," +
+            "eq=brightness=0.35:contrast=1.3:gamma=0.8:saturation=1.3," +
             "zscale=transfer=linear," +
             "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
             "format=yuv420p10le";
@@ -866,7 +867,8 @@ async function runHDR(file, width, height) {
             "-x265-params",
             "hdr10=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,50):max-cll=1000,400",
             "-c:a",
-            "copy",
+            ext.toLowerCase() === ".mov" ? "aac" : "copy",
+            ...(ext.toLowerCase() === ".mov" ? ["-b:a", "256k"] : []),
             "-video_track_timescale",
             "90000",
             "-threads",
