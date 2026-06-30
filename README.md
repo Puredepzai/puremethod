@@ -1,6 +1,6 @@
 # NoBlur — Post TikTok Videos Without the Blur
 
-NoBlur is a premium, client-side web application that processes MP4 and MOV video containers locally directly in your browser to bypass aggressive server-side recompression when uploading to TikTok. It uses MP4 sample-table frame density inflation as its core bypass mechanism, with an optional 60fps VFI interpolation path. The result preserves original quality, visual fidelity, and audio-video synchronization.
+NoBlur is a premium, client-side web application that processes MP4 and MOV video containers locally directly in your browser to bypass aggressive server-side recompression when uploading to TikTok. It uses MP4 sample-table frame density inflation as its core bypass mechanism, with optional 60fps VFI interpolation and HDR10 conversion pipelines. The result preserves original quality, visual fidelity, and audio-video synchronization.
 
 All processing is performed client-side using JavaScript, ArrayBuffers, Blobs, and FFmpeg.wasm. No data is uploaded to external servers.
 
@@ -10,7 +10,7 @@ All processing is performed client-side using JavaScript, ArrayBuffers, Blobs, a
 
 ## Technical Architecture
 
-NoBlur runs two distinct pipelines depending on the Interpolation toggle.
+NoBlur runs four pipeline combinations depending on toggles. All encoding pipelines output HEVC 10-bit (libx265, preset fast, CRF 18).
 
 ### Non-Interpolation Path (Frame Density Inflation)
 
@@ -21,11 +21,15 @@ The primary path for bypassing TikTok recompression. It inflates the MP4 sample 
 
 ### Interpolation Path (60fps VFI + Inflation Pipeline)
 
-When the Interpolation toggle is enabled, FFmpeg.wasm is lazy-loaded to run motion-compensated frame interpolation (`minterpolate`) to 60fps using the output resolution setting (1080p or 2K). Audio is copied without re-encoding (`-c:a copy`) for faster processing. The interpolated video is then passed through the same frame density inflation pipeline described above to ensure TikTok bypass compatibility. The FFmpeg instance is reset after VFI completes to prevent stale state errors.
+When only the Interpolation toggle is enabled, FFmpeg.wasm is lazy-loaded to run motion-compensated frame interpolation (`minterpolate`) to 60fps. The output is HEVC 10-bit (libx265, preset fast, CRF 18, maxrate 20M, bufsize 40M) with selectable output resolution (1080p or 2K). Audio is copied without re-encoding (`-c:a copy`) for faster processing, or re-encoded to AAC 256k for MOV inputs. The interpolated video is then passed through the same frame density inflation pipeline described above to ensure TikTok bypass compatibility.
 
 ### HDR10 Path (SDR to HDR10 Conversion)
 
-When the HDR10 toggle is enabled, FFmpeg.wasm is utilized to perform client-side SDR-to-HDR10 conversion. It applies brightness and contrast enhancement filters (tone expansion) to create an "HDR pop" effect, followed by encoding into HEVC 10-bit using the HLG (`arib-std-b67`) transfer function for improved dynamic range display. Preview thumbnails are extracted directly from the FFmpeg instance to ensure compatibility with 10-bit HEVC outputs.
+When only the HDR10 toggle is enabled, FFmpeg.wasm performs client-side SDR-to-HDR10 conversion using PQ transfer (`smpte2084`) with BT.2020 color primaries. It applies brightness (0.20) and contrast (1.25) enhancement filters (tone expansion), followed by `zscale` transfer conversion and encoding into HEVC 10-bit (libx265, preset fast, CRF 18, maxrate 20M, bufsize 40M) with full HDR10 metadata (master-display, max-cll=1000,400). Preview thumbnails are extracted directly from the FFmpeg instance. FPS follows the original source video.
+
+### Combined VFI + HDR Path (Single-Pass)
+
+When both toggles are enabled, both pipelines merge into a single-pass FFmpeg execution: motion interpolation to 60fps followed by tone expansion and HEVC 10-bit HDR10 encoding in one render pass. This avoids double-encoding and preserves maximum quality. Audio handling follows the same rules (copy or AAC 256k for MOV inputs).
 
 ---
 
@@ -35,11 +39,14 @@ When the HDR10 toggle is enabled, FFmpeg.wasm is utilized to perform client-side
 - **TikTok Compression Bypass:** Codec-aware frame density inflation (10x default) makes videos pass TikTok's quality-preservation threshold, avoiding the blur from server-side recompression. Works for both 1080p and 2K output.
 - **Codec-Aware Inflation:** Per-codec dummy sample sizes (avc1/avc3: 8B, hvc1/hev1: 16B, vp09/av01: 4B), VFR support, and 64-bit chunk offset (co64) support for maximum container compatibility.
 - **Single-Pass Pipeline:** Container normalization followed by sample-table inflation in one efficient operation.
-- **Selectable Output Resolution:** Choose between 1080p and 2K (1440p) when interpolation is enabled.
-- **60fps VFI Interpolation:** Optional motion-compensated frame interpolation to 60fps via FFmpeg.wasm with selectable 1080p/2K output.
-- **HDR10 Conversion:** Client-side SDR to HDR10 (HLG) conversion with HEVC 10-bit encoding, brightness/contrast tone expansion, and FFmpeg-based thumbnail extraction.
+- **Selectable Output Resolution:** Choose between 1080p and 2K (1440p) when interpolation or HDR is enabled.
+- **60fps VFI Interpolation:** Optional motion-compensated frame interpolation to 60fps via FFmpeg.wasm with HEVC 10-bit output.
+- **HDR10 Conversion:** Client-side SDR to HDR10 (PQ / smpte2084) conversion with HEVC 10-bit encoding, BT.2020 color space, and full HDR10 metadata.
+- **Combined VFI+HDR (Single-Pass):** When both toggles are enabled, renders 60fps HDR10 in a single FFmpeg execution for maximum efficiency and quality.
+- **HEVC 10-bit Output:** All encoding pipelines produce HEVC 10-bit for superior compression efficiency and quality.
 - **Client-Side Only:** 100% of processing happens locally within your browser, ensuring total data privacy.
 - **Multi-Format & Codec Input:** Accepts MP4 and MOV containers with H.264, HEVC/H.265, and other codecs.
+- **MOV Audio Auto-Recovery:** MOV inputs with PCM audio are automatically re-encoded to AAC 256k to prevent playback failures in MP4 container.
 - **Bulk Processing Queue:** Drag and drop or select multiple videos to process in a sequential batch.
 - **Screen Wake Lock:** Keeps the screen awake on mobile during processing; re-acquires the lock if the tab loses and regains visibility.
 - **TikTok Studio Shortcut:** Direct upload button to TikTok Studio web; on mobile, a modal guides the user to enable desktop mode first.
@@ -82,4 +89,4 @@ See [CHANGELOG.md](./CHANGELOG.md) for the full release history.
 
 ## Disclaimer
 
-This utility rewrites MP4 container metadata using sample-table inflation to bypass platform recompression. No video or audio data is re-encoded in the main pipeline, preserving original quality. The interpolation path (optional) uses FFmpeg.wasm for frame rate conversion only. It is designed to work with valid MP4 and MOV containers. Always keep backups of your original video files before processing.
+This utility rewrites MP4 container metadata using sample-table inflation to bypass platform recompression. No video or audio data is re-encoded in the main pipeline, preserving original quality. The interpolation/HDR paths (optional) use FFmpeg.wasm for frame rate conversion and HDR encoding only. It is designed to work with valid MP4 and MOV containers. Always keep backups of your original video files before processing.

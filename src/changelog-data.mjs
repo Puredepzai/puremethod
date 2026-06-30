@@ -3,11 +3,12 @@ export const changelogData = [
         version: "2.5.0",
         date: "2026-06-18",
         changes: [
-            "SDR to HDR10 (HLG) conversion via `arib-std-b67` transfer function",
-            "Tone expansion filters: `eq=brightness=0.15:contrast=1.15:gamma=0.85` for natural HDR pop",
-            "HEVC 10-bit output (libx265) with HDR meta (hdr-opt)",
-            "Added HDR preview thumbnail extraction from FFmpeg instance before termination",
+            "SDR to HDR10 conversion via PQ transfer (`smpte2084`) with BT.2020 color space",
+            "Tone expansion filters: `eq=brightness=0.20:contrast=1.25` + `zscale` PQ transfer",
+            "HEVC 10-bit output (libx265, preset fast, CRF 18, maxrate 20M, bufsize 40M) with full HDR10 metadata (master-display, max-cll=1000,400)",
+            "Added HDR preview thumbnail extraction from FFmpeg instance",
             "Resolution selector enabled for HDR mode",
+            "MOV input auto re-encodes PCM audio to AAC 256k",
         ],
     },
     {
