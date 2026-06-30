@@ -23,6 +23,10 @@ The primary path for bypassing TikTok recompression. It inflates the MP4 sample 
 
 When the Interpolation toggle is enabled, FFmpeg.wasm is lazy-loaded to run motion-compensated frame interpolation (`minterpolate`) to 60fps using the output resolution setting (1080p or 2K). Audio is copied without re-encoding (`-c:a copy`) for faster processing. The interpolated video is then passed through the same frame density inflation pipeline described above to ensure TikTok bypass compatibility. The FFmpeg instance is reset after VFI completes to prevent stale state errors.
 
+### HDR10 Path (SDR to HDR10 Conversion)
+
+When the HDR10 toggle is enabled, FFmpeg.wasm is utilized to perform client-side SDR-to-HDR10 conversion. It applies brightness and contrast enhancement filters (tone expansion) to create an "HDR pop" effect, followed by encoding into HEVC 10-bit using the HLG (`arib-std-b67`) transfer function for improved dynamic range display. Preview thumbnails are extracted directly from the FFmpeg instance to ensure compatibility with 10-bit HEVC outputs.
+
 ---
 
 ## Key Features
@@ -32,6 +36,8 @@ When the Interpolation toggle is enabled, FFmpeg.wasm is lazy-loaded to run moti
 - **Codec-Aware Inflation:** Per-codec dummy sample sizes (avc1/avc3: 8B, hvc1/hev1: 16B, vp09/av01: 4B), VFR support, and 64-bit chunk offset (co64) support for maximum container compatibility.
 - **Single-Pass Pipeline:** Container normalization followed by sample-table inflation in one efficient operation.
 - **Selectable Output Resolution:** Choose between 1080p and 2K (1440p) when interpolation is enabled.
+- **60fps VFI Interpolation:** Optional motion-compensated frame interpolation to 60fps via FFmpeg.wasm with selectable 1080p/2K output.
+- **HDR10 Conversion:** Client-side SDR to HDR10 (HLG) conversion with HEVC 10-bit encoding, brightness/contrast tone expansion, and FFmpeg-based thumbnail extraction.
 - **Client-Side Only:** 100% of processing happens locally within your browser, ensuring total data privacy.
 - **Multi-Format & Codec Input:** Accepts MP4 and MOV containers with H.264, HEVC/H.265, and other codecs.
 - **Bulk Processing Queue:** Drag and drop or select multiple videos to process in a sequential batch.
