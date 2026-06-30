@@ -773,12 +773,11 @@ async function extractMovThumbnail(file) {
         const data = await instance.readFile("thumb.jpg");
         await instance.deleteFile("thumb_input.mov").catch(() => {});
         await instance.deleteFile("thumb.jpg").catch(() => {});
-        await destroyFFmpegInstance();
         if (data && data.length > 100) {
             return data.buffer;
         }
     } catch (_) {
-        await destroyFFmpegInstance();
+        // Do not destroy instance globally to keep cached for main pipeline
     }
     return null;
 }
@@ -821,7 +820,7 @@ async function runHDR(file, width, height) {
         const inputName = `input${ext}`;
         const outputName = "output.mp4";
 
-        logMessage("Preparing HDR10 conversion pipeline...", "info");
+        // pipeline prepared silently
         await instance.writeFile(inputName, await fetchFile(file));
         if (isCancelled) throw new Error("Cancelled");
 
