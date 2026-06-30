@@ -721,15 +721,11 @@ async function runVFI(file, width, height, targetRes = 1080) {
             "-c:v",
             "libx265",
             "-preset",
-            "fast",
+            "ultrafast",
             "-crf",
-            "18",
-            "-maxrate",
-            "20M",
-            "-bufsize",
-            "40M",
+            "20",
             "-pix_fmt",
-            "yuv420p10le",
+            "yuv420p",
             "-c:a",
             ext.toLowerCase() === ".mov" ? "aac" : "copy",
             ...(ext.toLowerCase() === ".mov" ? ["-b:a", "256k"] : []),
@@ -741,7 +737,10 @@ async function runVFI(file, width, height, targetRes = 1080) {
         ];
 
         logMessage("Encoding in progress, please wait...", "info");
-        await instance.exec(args);
+        const ret = await instance.exec(args);
+        if (ret !== 0 && ret !== undefined) {
+            throw new Error(`FFmpeg exited with code ${ret}`);
+        }
         logMessage("Encoding complete.", "success");
 
         const thumbnailBuffer = await extractThumbnailFromInstance(
@@ -749,6 +748,9 @@ async function runVFI(file, width, height, targetRes = 1080) {
             outputName,
         );
         const data = await instance.readFile(outputName);
+        if (!data || data.byteLength < 100) {
+            throw new Error("FFmpeg produced an empty or invalid output file.");
+        }
 
         await instance.deleteFile(inputName).catch(() => {});
         await instance.deleteFile(outputName).catch(() => {});
@@ -887,7 +889,10 @@ async function runHDR(file, width, height) {
         ];
 
         logMessage("Encoding in progress, please wait...", "info");
-        await instance.exec(args);
+        const ret = await instance.exec(args);
+        if (ret !== 0 && ret !== undefined) {
+            throw new Error(`FFmpeg exited with code ${ret}`);
+        }
         logMessage("Encoding complete.", "success");
 
         const thumbnailBuffer = await extractThumbnailFromInstance(
@@ -895,6 +900,9 @@ async function runHDR(file, width, height) {
             outputName,
         );
         const data = await instance.readFile(outputName);
+        if (!data || data.byteLength < 100) {
+            throw new Error("FFmpeg produced an empty or invalid output file.");
+        }
 
         await instance.deleteFile(inputName).catch(() => {});
         await instance.deleteFile(outputName).catch(() => {});
