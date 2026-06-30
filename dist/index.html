@@ -23,8 +23,8 @@
     }
   }
   </script>
-  <script type="module" crossorigin src="./assets/index-Ck1bJ1XZ.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-CGbMeiaK.css">
+  <script type="module" crossorigin src="./assets/index-D-ev95bD.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-CBA8_XN4.css">
 </head>
 <body>
 
@@ -46,6 +46,11 @@
               <input type="checkbox" id="enableInterpolation">
               <span class="checkmark"></span>
               <span class="label-text">Enable 60fps Interpolation</span>
+            </label>
+            <label class="checkbox-container">
+              <input type="checkbox" id="enableHDR">
+              <span class="checkmark"></span>
+              <span class="label-text">Enable HDR10 Conversion</span>
             </label>
           </div>
           <div class="interpolator-resolution" id="vfiResolutionBox" style="display: none;">
@@ -173,6 +178,39 @@
       </div>
     </div>
   </div>
+  <div class="modal-overlay" id="hdrModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <i data-lucide="zap"></i>
+          <span class="modal-title">HDR10 CONVERSION</span>
+        </div>
+        <button class="modal-close-btn" id="closeHdrModalBtn">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-warning-block">
+          <i data-lucide="triangle-alert"></i>
+          <span>Performance Warning</span>
+        </div>
+        <ul class="modal-warning-list">
+          <li>HDR conversion uses HEVC 10-bit encoding and is CPU-intensive.</li>
+          <li>Processing time may be significantly longer than standard patch.</li>
+          <li>Output file size will be larger than original.</li>
+          <li>Multi-core CPU recommended for faster results.</li>
+        </ul>
+        <div class="modal-footer-note">
+          Converts SDR content to HDR10 (PQ transfer function, BT.2020 primaries).
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn modal-btn-cancel" id="cancelHdrBtn">Cancel</button>
+        <button class="modal-btn modal-btn-confirm" id="confirmHdrBtn">Enable Anyway</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="tiktokModal">
     <div class="modal-card">
       <div class="modal-header">

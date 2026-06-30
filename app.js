@@ -626,7 +626,7 @@ async function getFFmpeg() {
     const { toBlobURL } = await import("@ffmpeg/util");
 
     ffmpegInstance = new FFmpeg();
-    logMessage("Loading VFI engine...", "info");
+    logMessage("Loading video processing engine...", "info");
     const isMultiThread =
         typeof window.SharedArrayBuffer !== "undefined" &&
         window.crossOriginIsolated;
@@ -658,7 +658,7 @@ async function getFFmpeg() {
             );
         }
         await ffmpegInstance.load(loadConfig);
-        logMessage("VFI engine loaded successfully.", "success");
+        logMessage("Video processing engine loaded successfully.", "success");
     } catch (err) {
         await destroyFFmpegInstance();
         throw err;
@@ -736,12 +736,16 @@ async function runVFI(file, width, height, targetRes = 1080) {
         await instance.exec(args);
 
         logMessage("Completed frame processing.", "success");
+        const thumbnailBuffer = await extractThumbnailFromInstance(
+            instance,
+            outputName,
+        );
         const data = await instance.readFile(outputName);
 
         await instance.deleteFile(inputName).catch(() => {});
         await instance.deleteFile(outputName).catch(() => {});
 
-        return data.buffer;
+        return { buffer: data.buffer, thumbnail: thumbnailBuffer };
     } catch (err) {
         await destroyFFmpegInstance();
         throw err;
@@ -776,6 +780,117 @@ async function extractMovThumbnail(file) {
         await destroyFFmpegInstance();
     }
     return null;
+}
+
+async function extractThumbnailFromInstance(instance, videoFilename) {
+    try {
+        await instance.exec([
+            "-ss",
+            "0.1",
+            "-i",
+            videoFilename,
+            "-vframes",
+            "1",
+            "-vf",
+            "scale=320:-2",
+            "-f",
+            "mjpeg",
+            "thumb.jpg",
+        ]);
+        const data = await instance.readFile("thumb.jpg");
+        await instance.deleteFile("thumb.jpg").catch(() => {});
+        if (data && data.length > 100) {
+            return data.buffer;
+        }
+    } catch (e) {
+        logMessage(`Thumbnail capture failed: ${e.message}`, "warning");
+    }
+    return null;
+}
+
+async function runHDR(file, width, height) {
+    const { fetchFile } = await import("@ffmpeg/util");
+    let instance;
+    try {
+        if (isCancelled) throw new Error("Cancelled");
+        instance = await getFFmpeg();
+        if (isCancelled) throw new Error("Cancelled");
+
+        const ext = resolveInputExtension(file);
+        const inputName = `input${ext}`;
+        const outputName = "output.mp4";
+
+        logMessage("Preparing HDR10 conversion pipeline...", "info");
+        await instance.writeFile(inputName, await fetchFile(file));
+        if (isCancelled) throw new Error("Cancelled");
+
+        const isMultiThread =
+            typeof window.SharedArrayBuffer !== "undefined" &&
+            window.crossOriginIsolated;
+        const threads = Math.min(navigator.hardwareConcurrency || 4, 8);
+
+        const targetRes = Number.parseInt(
+            document.getElementById("outputResolution")?.value || "1080",
+            10,
+        );
+
+        let filter =
+            "eq=brightness=0.05:contrast=1.05," +
+            "zscale=transfer=linear," +
+            "zscale=transfer=arib-std-b67:primaries=bt2020:matrix=bt2020nc," +
+            "format=yuv420p10le";
+        if (width > height) {
+            filter = `scale=-2:${targetRes},${filter}`;
+        } else {
+            filter = `scale=${targetRes}:-2,${filter}`;
+        }
+
+        logMessage(
+            "Converting SDR to HDR10 (HEVC 10-bit)... This may take a few minutes.",
+            "info",
+        );
+
+        const args = [
+            "-i",
+            inputName,
+            "-vf",
+            filter,
+            "-c:v",
+            "libx265",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p10le",
+            "-x265-params",
+            "hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
+            "-c:a",
+            "copy",
+            "-video_track_timescale",
+            "90000",
+            "-threads",
+            String(threads),
+            outputName,
+        ];
+
+        await instance.exec(args);
+        logMessage("HDR10 encoding complete.", "success");
+
+        const thumbnailBuffer = await extractThumbnailFromInstance(
+            instance,
+            outputName,
+        );
+        const data = await instance.readFile(outputName);
+
+        await instance.deleteFile(inputName).catch(() => {});
+        await instance.deleteFile(outputName).catch(() => {});
+
+        return { buffer: data.buffer, thumbnail: thumbnailBuffer };
+    } catch (err) {
+        await destroyFFmpegInstance();
+        throw err;
+    }
 }
 
 function detectVideoCodecFromMoov(bytes, view, moovBox) {
@@ -1032,23 +1147,52 @@ async function patchSingleFile(item) {
             throw new Error("Could not parse video dimensions from container.");
         }
 
-        const workingBuffer = await runVFI(
+        const vfiResult = await runVFI(
             item.file,
             dims.width,
             dims.height,
             targetRes,
         );
-        sourceBuffer = workingBuffer;
+        sourceBuffer = vfiResult.buffer;
+        if (vfiResult.thumbnail) {
+            movThumbnailBuffer = vfiResult.thumbnail;
+        }
         logMessage(
             "VFI interpolation complete. Proceeding to binary patch pipeline...",
             "success",
         );
+    }
 
-        await destroyFFmpegInstance();
-        logMessage("VFI engine reset for binary patch pipeline...", "info");
+    if (enableHDR?.checked) {
+        logMessage("Starting HDR10 conversion pipeline...", "info");
+        if (isCancelled) throw new Error("Cancelled");
+
+        const fileBytes = new Uint8Array(await item.file.arrayBuffer());
+        const fileView = new DataView(fileBytes.buffer);
+        const dims = getDimensionsFromMp4Container(fileBytes, fileView);
+        if (!dims) {
+            throw new Error(
+                "Could not parse video dimensions for HDR conversion.",
+            );
+        }
+
+        const hdrInput = sourceBuffer ? new Blob([sourceBuffer]) : item.file;
+        const hdrResult = await runHDR(hdrInput, dims.width, dims.height);
+        sourceBuffer = hdrResult.buffer;
+        if (hdrResult.thumbnail) {
+            movThumbnailBuffer = hdrResult.thumbnail;
+        }
+        logMessage(
+            "HDR10 conversion complete. Proceeding to binary patch pipeline...",
+            "success",
+        );
     }
 
     if (isCancelled) throw new Error("Cancelled");
+
+    // Destroy FFmpeg instance before container parsing to free memory
+    await destroyFFmpegInstance();
+    logMessage("FFmpeg engine reset for binary patch pipeline...", "info");
 
     let videoInfo = null;
     if (!sourceBuffer) {
@@ -1085,16 +1229,16 @@ async function patchSingleFile(item) {
         }
     }
 
-    logMessage("  [Pass 1/1] Normalizing container...", "info");
+    logMessage("  Normalizing container...", "info");
     const normalized = normalizeContainer(inputBytes, inputView);
     let finalBuffer = normalized.newBuffer;
     let finalBytes = normalized.newBytes;
     let finalView = normalized.newView;
 
     if (normalized.changed) {
-        logMessage("  [Pass 1/1] Container normalized.", "success");
+        logMessage("  Container normalized.", "success");
     } else {
-        logMessage("  [Pass 1/1] Container already normalized.", "info");
+        logMessage("  Container already normalized.", "info");
     }
 
     const inflateResult = inflateSampleTableVideo(finalBytes, finalView, 10);
@@ -1102,9 +1246,9 @@ async function patchSingleFile(item) {
         finalBuffer = inflateResult.newBuffer;
         finalBytes = inflateResult.newBytes;
         finalView = new DataView(finalBuffer);
-        logMessage("  [Pass 1/1] Frame Density Inflation: Applied.", "success");
+        logMessage("  Frame Density Inflation: Applied.", "success");
     } else {
-        logMessage("  [Pass 1/1] Frame Density Inflation skipped.", "warning");
+        logMessage("  Frame Density Inflation skipped.", "warning");
     }
 
     return {
@@ -1500,29 +1644,29 @@ const closeVfiModalBtn = document.getElementById("closeVfiModalBtn");
 const cancelVfiBtn = document.getElementById("cancelVfiBtn");
 const confirmVfiBtn = document.getElementById("confirmVfiBtn");
 
-if (enableInterpolation && vfiModal) {
-    const resolutionBox = document.getElementById("vfiResolutionBox");
+const resolutionBox = document.getElementById("vfiResolutionBox");
+function updateResolutionVisibility() {
+    if (resolutionBox) {
+        resolutionBox.style.display =
+            enableInterpolation?.checked || enableHDR?.checked
+                ? "block"
+                : "none";
+    }
+}
 
+if (enableInterpolation && vfiModal) {
     enableInterpolation.addEventListener("change", () => {
         if (enableInterpolation.checked) {
             vfiModal.classList.add("active");
             lockScroll();
         }
-        if (resolutionBox) {
-            resolutionBox.style.display = enableInterpolation.checked
-                ? "block"
-                : "none";
-        }
+        updateResolutionVisibility();
     });
 
     const closeModal = () => {
         vfiModal.classList.remove("active");
         unlockScroll();
-        if (resolutionBox) {
-            resolutionBox.style.display = enableInterpolation.checked
-                ? "block"
-                : "none";
-        }
+        updateResolutionVisibility();
     };
 
     const cancelModal = () => {
@@ -1536,6 +1680,40 @@ if (enableInterpolation && vfiModal) {
 
     vfiModal.addEventListener("click", (e) => {
         if (e.target === vfiModal) cancelModal();
+    });
+}
+
+const enableHDR = document.getElementById("enableHDR");
+const hdrModal = document.getElementById("hdrModal");
+const closeHdrModalBtn = document.getElementById("closeHdrModalBtn");
+const cancelHdrBtn = document.getElementById("cancelHdrBtn");
+const confirmHdrBtn = document.getElementById("confirmHdrBtn");
+
+if (enableHDR && hdrModal) {
+    enableHDR.addEventListener("change", () => {
+        if (enableHDR.checked) {
+            hdrModal.classList.add("active");
+            lockScroll();
+        }
+        updateResolutionVisibility();
+    });
+
+    const closeHdrModal = () => {
+        hdrModal.classList.remove("active");
+        unlockScroll();
+        updateResolutionVisibility();
+    };
+
+    const cancelHdrModal = () => {
+        enableHDR.checked = false;
+        closeHdrModal();
+    };
+
+    closeHdrModalBtn?.addEventListener("click", cancelHdrModal);
+    cancelHdrBtn?.addEventListener("click", cancelHdrModal);
+    confirmHdrBtn?.addEventListener("click", closeHdrModal);
+    hdrModal.addEventListener("click", (e) => {
+        if (e.target === hdrModal) cancelHdrModal();
     });
 }
 

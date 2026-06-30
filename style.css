@@ -1030,6 +1030,9 @@ body {
 }
 
 .interpolator-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     padding-bottom: var(--space-sm);
     border-bottom: var(--border-thick);
     margin-bottom: var(--space-sm);

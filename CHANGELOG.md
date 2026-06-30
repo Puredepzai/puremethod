@@ -2,6 +2,15 @@
 
 All notable changes to the NoBlur project are documented in this file.
 
+## [2.5.0] - 2026-06-18
+
+**Added: HDR10 Conversion Pipeline (HLG-based)**
+- SDR to HDR10 (HLG) conversion via `arib-std-b67` transfer function
+- Tone expansion filters: `eq=brightness=0.15:contrast=1.15:gamma=0.85` for natural HDR pop
+- HEVC 10-bit output (libx265) with HDR meta (hdr-opt)
+- Added HDR preview thumbnail extraction from FFmpeg instance before termination
+- Resolution selector enabled for HDR mode
+
 ## [2.4.0] - 2026-06-18
 
 **Pipeline Simplification — Single-Pass Frame Density Inflation**
