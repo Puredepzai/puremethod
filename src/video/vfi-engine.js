@@ -18,15 +18,11 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         await instance.writeFile(inputName, fileData);
         if (isCancelled?.()) throw new Error("Cancelled");
 
-        // ===== CHUNKING THÔNG MINH =====
-        const fileSizeMB = file.size / (1024 * 1024);
-        const useChunk = fileSizeMB > 50; // Tự động chunk nếu >50MB
-        
-        // Filter giữ nguyên NoBlur gốc
+        // ===== BỎ mpdecimate, chỉ giữ minterpolate =====
         let filter;
         if (applyHDR) {
             filter =
-                "mpdecimate,minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4," +
+                "minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4," +
                 "eq=brightness=0.20:contrast=1.25," +
                 "zscale=transfer=linear," +
                 "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
@@ -38,7 +34,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             }
         } else {
             filter =
-                "mpdecimate,minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4";
+                "minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4";
             if (width > height) {
                 filter = `scale=-2:${targetRes},${filter}`;
             } else {
@@ -48,10 +44,13 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
 
         const threads = Math.min(navigator.hardwareConcurrency || 4, 4);
         
+        // ===== CHUNK PROCESSING VỚI LOG CHI TIẾT =====
+        const fileSizeMB = file.size / (1024 * 1024);
+        const useChunk = fileSizeMB > 50;
+        
         if (useChunk) {
             if (logMessage) logMessage(`Large file (${Math.round(fileSizeMB)}MB), using chunk processing...`, "info");
             
-            // Tự động tính số chunk dựa trên file size
             const numChunks = Math.max(2, Math.min(Math.ceil(fileSizeMB / 25), 8));
             const chunkDuration = Math.max(2, Math.floor(30 / numChunks));
             
@@ -66,9 +65,11 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 const chunkOutput = `chunk_out_${i}.mp4`;
                 
                 // Cắt chunk
-                await instance.exec(["-i", inputName, "-ss", String(start), "-t", String(chunkDuration), "-c", "copy", chunkInput]);
+                const cutArgs = ["-i", inputName, "-ss", String(start), "-t", String(chunkDuration), "-c", "copy", chunkInput];
+                if (logMessage) logMessage(`Cutting chunk ${i+1}: ${cutArgs.join(' ')}`, "info");
+                await instance.exec(cutArgs);
                 
-                // Xử lý chunk với quality cao
+                // Xử lý chunk
                 const processArgs = [
                     "-i", chunkInput,
                     "-vf", filter,
@@ -81,8 +82,18 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                     chunkOutput
                 ];
                 
-                let ret = await instance.exec(processArgs);
+                if (logMessage) logMessage(`Processing chunk ${i+1}: ${processArgs.join(' ')}`, "info");
+                
+                let ret;
+                try {
+                    ret = await instance.exec(processArgs);
+                } catch (execErr) {
+                    if (logMessage) logMessage(`Chunk ${i} exec error: ${execErr.message}`, "error");
+                    throw new Error(`Chunk ${i} exec failed: ${execErr.message}`);
+                }
+                
                 if (ret !== 0 && ret !== undefined) {
+                    if (logMessage) logMessage(`Chunk ${i} returned code ${ret}`, "error");
                     throw new Error(`Chunk ${i} failed with code ${ret}`);
                 }
                 
@@ -91,7 +102,6 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 if (setProgress) try { setProgress(totalProgress); } catch (_) {}
                 if (logMessage) logMessage(`Chunk ${i+1}/${numChunks} done`, "info");
                 
-                // ===== GIẢI PHÓNG RAM NGAY =====
                 await instance.deleteFile(chunkInput).catch(() => {});
                 if (window.gc) try { window.gc(); } catch (_) {}
             }
@@ -102,7 +112,6 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             await instance.writeFile("concat.txt", concatList);
             await instance.exec(["-f", "concat", "-safe", "0", "-i", "concat.txt", "-c", "copy", outputName]);
             
-            // Dọn dẹp
             for (const f of chunkFiles) {
                 await instance.deleteFile(f).catch(() => {});
             }
@@ -110,7 +119,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             if (window.gc) try { window.gc(); } catch (_) {}
             
         } else {
-            // ===== XỬ LÝ BÌNH THƯỜNG (GIỐNG NOBLUR GỐC) =====
+            // ===== XỬ LÝ BÌNH THƯỜNG =====
             const args = applyHDR ? [
                 "-i", inputName,
                 "-vf", filter,
@@ -137,7 +146,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 outputName,
             ];
             
-            if (logMessage) logMessage("Encoding in progress...", "info");
+            if (logMessage) logMessage(`Encoding: ${args.join(' ')}`, "info");
             const ret = await instance.exec(args);
             if (ret !== 0 && ret !== undefined) {
                 throw new Error(`FFmpeg exited with code ${ret}`);
