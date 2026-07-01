@@ -2,32 +2,7 @@ import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
-// ===== BẬT GHOST MODE =====
-const GHOST_MODE = false; // true = fake, false = real
-
-export async function runVFI(file, width, height, targetRes, applyHDR, isCancelled, logMessage, setProgress) {
-    // ===== GHOST MODE =====
-    if (GHOST_MODE) {
-        if (logMessage) logMessage("👻 GHOST MODE: Bypassing real processing...", "info");
-        
-        // Fake progress
-        let p = 0;
-        while (p < 100) {
-            if (isCancelled?.()) throw new Error("Cancelled");
-            p += Math.random() * 12 + 3;
-            if (p > 100) p = 100;
-            try { setProgress(p); } catch (_) {}
-            await new Promise(r => setTimeout(r, 150));
-        }
-        
-        if (logMessage) logMessage("✅ Ghost processing complete. Original file returned.", "success");
-        
-        // Trả về buffer gốc (không xử lý)
-        const originalBuffer = await file.arrayBuffer();
-        return { buffer: originalBuffer, thumbnail: null };
-    }
-
-    // ===== REAL PROCESSING (giữ nguyên code cũ bên dưới) =====
+export async function runVFI(file, width, height, targetRes, applyHDR, isCancelled, logMessage, setProgress, enableTurbo = false, targetFPS = 120) {
     let instance;
     const ext = resolveInputExtension(file);
     const inputName = `input${ext}`;
@@ -43,19 +18,25 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         await instance.writeFile(inputName, fileData);
         if (isCancelled?.()) throw new Error("Cancelled");
 
-        const threads = Math.min(navigator.hardwareConcurrency || 4, 4);
+        // ===== CẤU HÌNH THEO TURBO MODE =====
+        const preset = enableTurbo ? "ultrafast" : "fast";
+        const crf = enableTurbo ? 22 : 18;
+        const searchParam = enableTurbo ? 2 : 4;
+        const threads = enableTurbo ? 2 : 4;
+
+        if (logMessage) logMessage(`⚙️ Mode: ${enableTurbo ? "TURBO (fast)" : "QUALITY"} | Target FPS: ${targetFPS}`, "info");
+
         let filter;
-        
         if (applyHDR) {
             filter =
-                "minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4," +
+                `minterpolate=fps=${targetFPS}:mi_mode=mci:me_mode=bilat:me=epzs:search_param=${searchParam},` +
                 "eq=brightness=0.20:contrast=1.25," +
                 "zscale=transfer=linear," +
                 "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
                 "format=yuv420p10le";
         } else {
             filter =
-                "minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4";
+                `minterpolate=fps=${targetFPS}:mi_mode=mci:me_mode=bilat:me=epzs:search_param=${searchParam}`;
         }
         
         if (width > height) {
@@ -68,10 +49,10 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             "-i", inputName,
             "-vf", filter,
             "-c:v", "libx265",
-            "-preset", "fast",
-            "-crf", "18",
-            "-maxrate", "20M",
-            "-bufsize", "40M",
+            "-preset", preset,
+            "-crf", String(crf),
+            "-maxrate", enableTurbo ? "10M" : "20M",
+            "-bufsize", enableTurbo ? "20M" : "40M",
             "-pix_fmt", "yuv420p10le",
             "-x265-params", "hdr10=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,50):max-cll=1000,400",
             "-c:a", "copy",
@@ -82,15 +63,15 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             "-i", inputName,
             "-vf", filter,
             "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "20",
+            "-preset", preset,
+            "-crf", String(crf),
             "-c:a", "copy",
             "-video_track_timescale", "90000",
             "-threads", String(threads),
             outputName,
         ];
         
-        if (logMessage) logMessage(`Encoding in progress...`, "info");
+        if (logMessage) logMessage(`🔄 Encoding to ${targetFPS}fps with ${preset} preset...`, "info");
         setProgress(30);
         
         const ret = await instance.exec(args);
@@ -113,6 +94,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         }
 
         setProgress(100);
+        if (logMessage) logMessage(`✅ Done! Output: ${targetFPS}fps`, "success");
 
         return { buffer: data.buffer, thumbnail: thumbnailBuffer };
         
