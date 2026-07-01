@@ -1,6 +1,5 @@
 import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
-import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
 export async function runVFI(file, width, height, targetRes, isCancelled, logMessage, setProgress) {
     let instance;
@@ -26,15 +25,14 @@ export async function runVFI(file, width, height, targetRes, isCancelled, logMes
             filter = `scale=${targetRes}:-2,${filter}`;
         }
 
-        logMessage("Interpolating video frames to 60fps (HEVC)... This may take a minute.", "info");
+        logMessage("Interpolating video frames to 60fps (H.264)... This may take a minute.", "info");
 
         const args = [
             "-i", inputName,
             "-vf", filter,
-            "-c:v", "libx265",
+            "-c:v", "libx264",
             "-preset", "ultrafast",
             "-crf", "20",
-            "-pix_fmt", "yuv420p",
             "-c:a", "copy",
             "-video_track_timescale", "90000",
             "-threads", String(threads),
@@ -53,10 +51,8 @@ export async function runVFI(file, width, height, targetRes, isCancelled, logMes
             throw new Error("FFmpeg produced an empty or invalid output file.");
         }
 
-        // Thumbnail after readFile to avoid double memory spike
-        const thumbnailBuffer = await extractThumbnailFromInstance(instance, outputName, logMessage);
-
-        return { buffer: data.buffer, thumbnail: thumbnailBuffer };
+        // No FFmpeg thumbnail — H.264 output is browser-decodable
+        return { buffer: data.buffer, thumbnail: null };
     } catch (err) {
         await destroyFFmpegInstance();
         throw err;
