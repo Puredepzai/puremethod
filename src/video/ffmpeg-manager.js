@@ -3,11 +3,10 @@ import { toBlobURL } from "@ffmpeg/util";
 
 let ffmpegInstance = null;
 
-// ===== CẤU HÌNH GIỚI HẠN TÀI NGUYÊN =====
-// Tăng lên 2GB để xử lý video nặng hơn, nhưng vẫn giữ thread thấp
-const MEMORY_LIMIT_MB = 2048; // 2GB RAM
-const THREAD_COUNT = 2;        // 2 luồng để cân bằng
-// ========================================
+// ===== CẤU HÌNH TỐI ĐA =====
+const MEMORY_LIMIT_MB = 4096; // 4GB RAM (tối đa)
+const THREAD_COUNT = 1;       // 1 luồng để giảm RAM
+// ===========================
 
 export async function destroyFFmpegInstance() {
     if (!ffmpegInstance) return;
@@ -60,7 +59,7 @@ export async function getFFmpeg(logMessage, setProgress) {
         }
         await ffmpegInstance.load(loadConfig);
         
-        // ===== TĂNG GIỚI HẠN BỘ NHỚ =====
+        // ===== TĂNG RAM TỐI ĐA =====
         try {
             await ffmpegInstance.setMemoryLimit(MEMORY_LIMIT_MB * 1024 * 1024);
             if (logMessage) logMessage(`Memory limit set to ${MEMORY_LIMIT_MB}MB`, "info");
