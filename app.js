@@ -4,6 +4,7 @@ import {
     Download,
     FileVideo,
     Info,
+    RefreshCw,
     Trash2,
     TriangleAlert,
     Upload,
@@ -57,6 +58,7 @@ const ALL_ICONS = {
     Cpu,
     Zap,
     TriangleAlert,
+    RefreshCw,
 };
 
 const outputSuffix = "_byNoBlur → @wymidk0";
@@ -448,24 +450,27 @@ function removeFile(index) {
 }
 
 function updatePatchButton() {
+    const errorCount = selectedFiles.filter(f => f.status === "error").length;
+    const pendingCount = selectedFiles.filter(f => f.status === "pending").length;
+    const checkedCount = selectedFiles.filter(
+        f => f.status === "success" && f.checked && f.patchedBuffer,
+    ).length;
+
     if (currentFlowState === "completed") {
-        const checkedCount = selectedFiles.filter(
-            (f) => f.status === "success" && f.checked && f.patchedBuffer,
-        ).length;
-        patchBtn.disabled = checkedCount === 0;
-        const label = `Download Selected (${checkedCount})`;
-        patchBtn.querySelector("span").textContent = label;
+        if (errorCount > 0) {
+            patchBtn.disabled = false;
+            patchBtn.querySelector("span").textContent = `Retry Failed (${errorCount})`;
+            patchBtn.dataset.mode = "retry";
+        } else {
+            patchBtn.disabled = checkedCount === 0;
+            patchBtn.querySelector("span").textContent = `Download Selected (${checkedCount})`;
+            patchBtn.dataset.mode = "download";
+        }
     } else {
-        const pendingCount = selectedFiles.filter(
-            (f) => f.status === "pending",
-        ).length;
-        patchBtn.disabled =
-            pendingCount === 0 || currentFlowState === "patching";
-        const label =
-            pendingCount > 1
-                ? `Patch Videos (${pendingCount})`
-                : "Patch Videos";
+        patchBtn.disabled = pendingCount === 0 || currentFlowState === "patching";
+        const label = pendingCount > 1 ? `Patch Videos (${pendingCount})` : "Patch Videos";
         patchBtn.querySelector("span").textContent = label;
+        patchBtn.dataset.mode = "patch";
     }
 }
 
@@ -860,21 +865,23 @@ async function patchSingleFile(item) {
     }
 
     if (enableInterpolation?.checked) {
-        logMessage("Starting VFI Engine for 60fps interpolation...", "info");
+        logMessage("Starting VFI Engine...", "info");
         if (isCancelled) throw new Error("Cancelled");
 
         const fileBytes = new Uint8Array(await item.file.arrayBuffer());
         const fileView = new DataView(fileBytes.buffer);
         const dims = getDimensionsFromMp4Container(fileBytes, fileView);
         if (!dims) {
-            throw new Error("Could not parse video dimensions from container.");
+            throw new Error("Could not parse video dimensions.");
         }
 
+        const applyHDR = enableHDR?.checked;
         const vfiResult = await runVFI(
             item.file,
             dims.width,
             dims.height,
             targetRes,
+            applyHDR,
             () => isCancelled,
             logMessage,
             setProgress,
@@ -883,23 +890,16 @@ async function patchSingleFile(item) {
         if (vfiResult.thumbnail) {
             movThumbnailBuffer = vfiResult.thumbnail;
         }
-        logMessage(
-            "VFI processing complete. Proceeding to binary patch pipeline...",
-            "success",
-        );
-    }
-
-    if (enableHDR?.checked) {
+        logMessage(applyHDR ? "60fps HDR processing complete." : "VFI processing complete.", "success");
+    } else if (enableHDR?.checked) {
         logMessage("Starting HDR10 conversion pipeline...", "info");
         if (isCancelled) throw new Error("Cancelled");
-
+        
         const fileBytes = new Uint8Array(await item.file.arrayBuffer());
         const fileView = new DataView(fileBytes.buffer);
         const dims = getDimensionsFromMp4Container(fileBytes, fileView);
         if (!dims) {
-            throw new Error(
-                "Could not parse video dimensions for HDR conversion.",
-            );
+            throw new Error("Could not parse video dimensions for HDR conversion.");
         }
 
         const hdrInput = sourceBuffer ? new Blob([sourceBuffer]) : item.file;
@@ -916,10 +916,7 @@ async function patchSingleFile(item) {
         if (hdrResult.thumbnail) {
             movThumbnailBuffer = hdrResult.thumbnail;
         }
-        logMessage(
-            "HDR10 conversion complete. Proceeding to binary patch pipeline...",
-            "success",
-        );
+        logMessage("HDR10 conversion complete.", "success");
     }
 
     if (isCancelled) throw new Error("Cancelled");
@@ -1094,9 +1091,13 @@ document.addEventListener("visibilitychange", () => {
 });
 
 patchBtn.addEventListener("click", async () => {
-    if (currentFlowState === "completed") {
+    if (patchBtn.dataset.mode === "download") {
         await downloadSelectedFiles();
         return;
+    }
+
+    if (patchBtn.dataset.mode === "retry") {
+        selectedFiles.forEach(f => { if (f.status === "error") f.status = "pending"; });
     }
 
     const pendingItems = selectedFiles.filter((f) => f.status === "pending");
