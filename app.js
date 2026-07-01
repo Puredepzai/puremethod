@@ -61,7 +61,7 @@ const ALL_ICONS = {
     RefreshCw,
 };
 
-const outputSuffix = "_byNoBlur → @wymidk0";
+const outputSuffix = "_PureMethod";
 const supportedMimeTypes = [
     "video/mp4",
     "video/quicktime",
