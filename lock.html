@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>PureMethod - Key</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      margin: 0;
+      background: #0a0a0a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: sans-serif;
+      color: white;
+    }
+    .box {
+      background: #1e1e1e;
+      padding: 40px;
+      border-radius: 12px;
+      text-align: center;
+      max-width: 360px;
+      width: 90%;
+    }
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #333;
+      border-radius: 8px;
+      background: #0a0a0a;
+      color: white;
+      font-size: 16px;
+      margin: 12px 0;
+      box-sizing: border-box;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      background: #facc15;
+      color: #000;
+      font-weight: 700;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .error { color: #ff4444; font-size: 13px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+<div class="box">
+  <h1>🔐 PureMethod</h1>
+  <p style="color:#888;">Key?</p>
+  <input id="keyInput" type="password" placeholder="Nhập key...">
+  <button id="unlockBtn">Mở khóa</button>
+  <div class="error" id="lockError"></div>
+</div>
+<script>
+  const KEY = "abc123"; // Đổi key ở đây
+  document.getElementById('unlockBtn').onclick = function() {
+    if (document.getElementById('keyInput').value === KEY) {
+      localStorage.setItem('puremethod_key', KEY);
+      window.location.href = 'index.html';
+    } else {
+      document.getElementById('lockError').textContent = '❌ Sai key!';
+      document.getElementById('keyInput').value = '';
+    }
+  };
+  document.getElementById('keyInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') document.getElementById('unlockBtn').click();
+  });
+</script>
+</body>
+</html>
