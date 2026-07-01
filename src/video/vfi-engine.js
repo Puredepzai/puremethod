@@ -2,6 +2,11 @@ import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
+// ===== GIỚI HẠN TÀI NGUYÊN =====
+const MAX_THREADS = 2; // Chỉ dùng 2 luồng để tránh crash
+const MEMORY_LIMIT_MB = 512; // Giới hạn RAM 512MB
+// ===============================
+
 export async function runVFI(file, width, height, targetRes, applyHDR, isCancelled, logMessage, setProgress) {
     let instance;
     const ext = resolveInputExtension(file);
@@ -16,7 +21,9 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         await instance.writeFile(inputName, await fetchFile(file));
         if (isCancelled()) throw new Error("Cancelled");
 
-        const threads = Math.min(navigator.hardwareConcurrency || 4, 8);
+        // ===== GIỚI HẠN THREAD =====
+        const threads = MAX_THREADS;
+        logMessage(`Using ${threads} thread(s) for processing`, "info");
         
         let filter;
         if (applyHDR) {
@@ -48,8 +55,8 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 "-i", inputName,
                 "-vf", filter,
                 "-c:v", "libx265",
-                "-preset", "fast",
-                "-crf", "18",
+                "-preset", "veryfast", // Từ fast sang veryfast để giảm CPU
+                "-crf", "22", // Tăng lên 22 để giảm dung lượng (quality giảm nhẹ)
                 "-maxrate", "20M",
                 "-bufsize", "40M",
                 "-pix_fmt", "yuv420p10le",
@@ -57,6 +64,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 "-c:a", "copy",
                 "-video_track_timescale", "90000",
                 "-threads", String(threads),
+                "-memory_limit", String(MEMORY_LIMIT_MB * 1024 * 1024), // Giới hạn RAM
                 outputName,
             ];
         } else {
@@ -65,11 +73,12 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 "-i", inputName,
                 "-vf", filter,
                 "-c:v", "libx264",
-                "-preset", "fast",
-                "-crf", "20",
+                "-preset", "veryfast", // Từ fast sang veryfast
+                "-crf", "22", // Từ 20 lên 22
                 "-c:a", "copy",
                 "-video_track_timescale", "90000",
                 "-threads", String(threads),
+                "-memory_limit", String(MEMORY_LIMIT_MB * 1024 * 1024),
                 outputName,
             ];
         }
@@ -88,7 +97,6 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
 
         let thumbnailBuffer = null;
         if (applyHDR) {
-            // HEVC needs FFmpeg helper for thumbnail
             thumbnailBuffer = await extractThumbnailFromInstance(instance, outputName, logMessage);
         }
 
