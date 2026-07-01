@@ -1,3 +1,14 @@
+:root {
+  --bg: #0a0a0a;
+  --panel: #0d0d0d;
+  --fg: #ffffff;
+  --line: #ffffff;
+  --line-soft: #222222;
+  --muted: #7a7a7a;
+  --muted-dim: #4a4a4a;
+  --radius: 2px;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -6,8 +17,8 @@
 
 body {
   font-family: 'Inter', sans-serif;
-  background: #0a0a0a;
-  color: #ffffff;
+  background: var(--bg);
+  color: var(--fg);
   display: flex;
   justify-content: center;
   padding: 24px 16px;
@@ -19,61 +30,77 @@ body {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
 /* HEADER */
 header {
-  border-bottom: 2px solid #ffffff;
-  padding-bottom: 12px;
+  border-bottom: 2px solid var(--line);
+  padding-bottom: 14px;
+}
+.header-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .logo {
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.5px;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.6px;
 }
 .logo span {
-  background: #ffffff;
-  color: #0a0a0a;
+  background: var(--fg);
+  color: var(--bg);
   padding: 0 6px;
-  border: 2px solid #ffffff;
+  border: 2px solid var(--fg);
   margin-left: 4px;
+}
+.badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  border: 1px solid var(--line-soft);
+  padding: 2px 6px;
+  letter-spacing: 0.5px;
 }
 .sub {
   font-size: 13px;
-  color: #666666;
-  margin-top: 4px;
+  color: var(--muted);
+  margin-top: 6px;
   line-height: 1.4;
 }
 
-/* MAIN GRID (Mặc định cho máy tính là 2 cột) */
+/* MAIN GRID */
 main {
   display: grid;
-  grid-template-columns: 340px 1fr;
-  gap: 20px;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
   align-items: start;
 }
 
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
+  position: sticky;
+  top: 24px;
 }
 
 /* KHUNG CHUNG VIỀN ĐEN TRẮNG */
 section {
-  border: 2px solid #ffffff;
+  border: 2px solid var(--line);
   padding: 16px;
-  background: #0a0a0a;
+  background: var(--panel);
 }
 
 .section-title {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 1px;
-  color: #888888;
-  border-bottom: 1px solid #222222;
-  padding-bottom: 6px;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line-soft);
+  padding-bottom: 8px;
   margin-bottom: 14px;
   text-transform: uppercase;
 }
@@ -84,8 +111,11 @@ section {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
+  padding: 8px 0;
   cursor: pointer;
+}
+.control-item + .control-item {
+  border-top: 1px solid var(--line-soft);
 }
 
 .control-text {
@@ -95,22 +125,59 @@ section {
 }
 
 .control-text span {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
 }
 
 .control-text small {
   font-size: 11px;
-  color: #666666;
+  color: var(--muted);
 }
 
-/* Sửa lỗi hiển thị checkbox */
-.settings input[type="checkbox"] {
-  accent-color: #ffffff;
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
+/* CUSTOM TOGGLE SWITCH (replaces raw checkbox) */
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
   flex-shrink: 0;
+}
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 40px;
+  height: 22px;
+  margin: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+.switch-track {
+  width: 40px;
+  height: 22px;
+  border: 2px solid var(--fg);
+  background: transparent;
+  display: block;
+  position: relative;
+  transition: background 0.15s ease;
+}
+.switch-thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 14px;
+  height: 14px;
+  background: var(--fg);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.switch input:checked ~ .switch-track {
+  background: var(--fg);
+}
+.switch input:checked ~ .switch-track .switch-thumb {
+  transform: translateX(18px);
+  background: var(--bg);
+}
+.switch input:focus-visible ~ .switch-track {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
 }
 
 /* RESOLUTION */
@@ -118,25 +185,38 @@ section {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  margin-top: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
 }
 .resolution select {
   background: #111111;
-  color: #ffffff;
-  border: 2px solid #ffffff;
-  padding: 8px;
+  color: var(--fg);
+  border: 2px solid var(--fg);
+  padding: 9px 8px;
   font-family: inherit;
   font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
   outline: none;
   width: 100%;
+  cursor: pointer;
 }
+.resolution select:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
 .note {
   font-size: 11px;
-  color: #555555;
-  margin-top: 6px;
-  line-height: 1.4;
+  color: var(--muted-dim);
+  margin-top: 10px;
+  line-height: 1.5;
 }
 
 /* DROP AREA */
@@ -147,28 +227,33 @@ section {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-height: 320px;
+  min-height: 460px;
 }
 .drop-zone {
-  border: 2px dashed #ffffff;
+  border: 2px dashed var(--line);
   padding: 32px 16px;
   text-align: center;
   cursor: pointer;
   background: #0d0d0d;
-  transition: background 0.2s;
+  transition: background 0.15s ease, border-color 0.15s ease;
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
 }
-.drop-zone:hover {
+.drop-zone:hover,
+.drop-zone:focus-visible {
   background: #141414;
+}
+.drop-zone.dragover {
+  background: #161616;
+  border-color: var(--fg);
 }
 .drop-zone .icon {
   font-size: 32px;
   opacity: 0.6;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 .drop-zone .text strong {
   display: block;
@@ -177,13 +262,19 @@ section {
 }
 .drop-zone .text span {
   font-size: 12px;
-  color: #666666;
+  color: var(--muted);
 }
 .queue {
+  font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
-  color: #888888;
+  color: #aaaaaa;
   max-height: 150px;
   overflow-y: auto;
+}
+.queue:empty::before {
+  content: 'No files queued.';
+  color: var(--muted-dim);
+  font-style: italic;
 }
 
 /* ACTIONS BUTTONS */
@@ -198,116 +289,128 @@ section {
   font-family: inherit;
   font-weight: 700;
   font-size: 12px;
+  letter-spacing: 0.4px;
   text-transform: uppercase;
-  border: 2px solid #ffffff;
+  border: 2px solid var(--fg);
   background: transparent;
-  color: #ffffff;
+  color: var(--fg);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
   text-align: center;
   text-decoration: none;
   display: block;
 }
 .btn:hover {
-  background: #ffffff;
-  color: #0a0a0a;
+  background: var(--fg);
+  color: var(--bg);
+}
+.btn:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
 }
 .btn:disabled {
   opacity: 0.25;
   cursor: not-allowed;
   background: transparent !important;
-  color: #ffffff !important;
+  color: var(--fg) !important;
 }
 .primary {
-  background: #ffffff;
-  color: #0a0a0a;
+  background: var(--fg);
+  color: var(--bg);
 }
 .primary:hover:not(:disabled) {
-  background: #0a0a0a;
-  color: #ffffff;
+  background: var(--bg);
+  color: var(--fg);
 }
 
 .secondary, .tiktok {
-  border-color: #ffffff;
-  color: #ffffff;
+  border-color: var(--fg);
+  color: var(--fg);
 }
 
 .progress {
   height: 6px;
   background: #1a1a1a;
-  border: 1px solid #ffffff;
+  border: 1px solid var(--fg);
   overflow: hidden;
   margin: 4px 0;
 }
 .bar {
   height: 100%;
   width: 0%;
-  background: #ffffff;
-  transition: width 0.3s;
+  background: var(--fg);
+  transition: width 0.3s ease;
 }
 
 /* FOOTER LOG SYSTEM */
 footer {
-  border: 2px solid #ffffff;
+  border: 2px solid var(--fg);
   padding: 12px 16px;
 }
 .log-title {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 1px;
-  color: #888888;
-  border-bottom: 1px solid #222222;
-  padding-bottom: 4px;
-  margin-bottom: 6px;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line-soft);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  text-transform: uppercase;
 }
 .log-body {
   font-size: 11px;
-  font-family: monospace;
+  font-family: 'JetBrains Mono', monospace;
   max-height: 100px;
   overflow-y: auto;
   color: #cccccc;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+}
+.log-body:empty::before {
+  content: 'Idle.';
+  color: var(--muted-dim);
+  font-style: italic;
 }
 .log-body .info { color: #ffffff; }
 .log-body .success { color: #ffffff; text-decoration: underline; }
-.log-body .error { color: #888888; font-style: italic; }
+.log-body .error { color: #999999; font-style: italic; }
 .log-body .warning { color: #aaaaaa; }
 
 .footer-link {
   text-align: center;
   font-size: 12px;
   color: #444444;
-  border-top: 1px solid #222222;
+  border-top: 1px solid var(--line-soft);
   padding-top: 14px;
 }
 .footer-link a {
-  color: #888888;
+  color: var(--muted);
   text-decoration: none;
 }
 .footer-link a:hover {
-  color: #ffffff;
+  color: var(--fg);
 }
 
-/* QUAN TRỌNG: ẨN HOÀN TOÀN NÚT CHỌN TỆP XẤU XÍ */
+/* HIDE FILE INPUT */
 #fileInput {
   display: none !important;
 }
 
-/* QUAN TRỌNG: ĐÁP ỨNG CHO MÀN HÌNH DI ĐỘNG (FIX LỖI NHƯ TRONG ẢNH) */
+/* RESPONSIVE: MOBILE */
 @media (max-width: 850px) {
   main {
-    grid-template-columns: 1fr; /* Chuyển sang 1 cột xếp chồng dọc */
+    grid-template-columns: 1fr;
     gap: 16px;
   }
-  
+
   .sidebar {
-    order: 2; /* Đẩy cài đặt xuống dưới vùng thả video để tiện sử dụng trên phone */
+    order: 2;
+    position: static;
   }
-  
+
   .content-area {
-    order: 1; /* Đẩy vùng thả video lên đầu cho dễ bấm */
+    order: 1;
   }
 
   .drop {
