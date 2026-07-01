@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PureMethod</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
   <script>
     if (!window.crossOriginIsolated) window.SharedArrayBuffer = undefined;
@@ -29,7 +29,10 @@
 
   <div class="app">
     <header>
-      <div class="logo">Pure<span>Method</span></div>
+      <div class="header-row">
+        <div class="logo">Pure<span>Method</span></div>
+        <div class="badge">v2</div>
+      </div>
       <div class="sub">Bypass TikTok compression · Preserve original quality</div>
     </header>
 
@@ -38,21 +41,27 @@
       <div class="sidebar">
         <section class="settings">
           <div class="section-title">Settings</div>
-          
-          <label class="control-item">
+
+          <label class="control-item" for="enableInterpolation">
             <div class="control-text">
               <span>60fps Interpolation</span>
               <small>Inflates frame count to 60fps</small>
             </div>
-            <input type="checkbox" id="enableInterpolation" />
+            <span class="switch">
+              <input type="checkbox" id="enableInterpolation" />
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </span>
           </label>
 
-          <label class="control-item">
+          <label class="control-item" for="enableHDR">
             <div class="control-text">
               <span>HDR10 Conversion</span>
               <small>SDR → HDR10 (PQ, BT.2020)</small>
             </div>
-            <input type="checkbox" id="enableHDR" />
+            <span class="switch">
+              <input type="checkbox" id="enableHDR" />
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </span>
           </label>
 
           <div class="resolution" id="vfiResolutionBox" style="display:none;">
@@ -62,10 +71,12 @@
               <option value="1440">2K (1440p)</option>
             </select>
           </div>
+
           <div class="note">⚡ Processing speed depends on your device.</div>
         </section>
 
         <section class="actions">
+          <div class="section-title">Run</div>
           <button class="btn primary" id="patchBtn" disabled>Patch Videos</button>
           <button class="btn secondary" id="clearBtn">Clear</button>
           <a class="btn tiktok" href="https://www.tiktok.com/tiktokstudio/upload" target="_blank">Upload to TikTok Studio</a>
