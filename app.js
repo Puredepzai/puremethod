@@ -86,6 +86,7 @@ let selectedFiles = [];
 let currentFlowState = "idle";
 let isCancelled = false;
 let processingFiles = false;
+let lastSettings = null;
 
 let lastWidth = null;
 function adjustMobileLayout() {
@@ -456,11 +457,22 @@ function updatePatchButton() {
         f => f.status === "success" && f.checked && f.patchedBuffer,
     ).length;
 
+    const cur = {
+        vfi: document.getElementById("enableInterpolation")?.checked || false,
+        hdr: document.getElementById("enableHDR")?.checked || false,
+        res: document.getElementById("outputResolution")?.value || "1080",
+    };
+    const settingsChanged = lastSettings && JSON.stringify(lastSettings) !== JSON.stringify(cur);
+
     if (currentFlowState === "completed") {
         if (errorCount > 0) {
             patchBtn.disabled = false;
             patchBtn.querySelector("span").textContent = `Retry Failed (${errorCount})`;
             patchBtn.dataset.mode = "retry";
+        } else if (settingsChanged) {
+            patchBtn.disabled = false;
+            patchBtn.querySelector("span").textContent = `Reprocess (${selectedFiles.length})`;
+            patchBtn.dataset.mode = "patch";
         } else {
             patchBtn.disabled = checkedCount === 0;
             patchBtn.querySelector("span").textContent = `Download Selected (${checkedCount})`;
@@ -1257,6 +1269,11 @@ patchBtn.addEventListener("click", async () => {
     }
 
     currentFlowState = "completed";
+    lastSettings = {
+        vfi: enableInterpolation?.checked || false,
+        hdr: enableHDR?.checked || false,
+        res: document.getElementById("outputResolution")?.value || "1080"
+    };
     setProgress(100);
     releaseWakeLock();
     logMessage(
