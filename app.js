@@ -131,7 +131,6 @@ function initializeApp() {
     adjustMobileLayout();
     window.addEventListener("resize", adjustMobileLayout);
     
-    // Khởi tạo ETA display
     const etaDisplay = document.createElement('div');
     etaDisplay.id = 'etaDisplay';
     etaDisplay.style.cssText = 'font-family: monospace; font-size: 13px; color: #aaa; text-align: center; margin-top: 4px; min-height: 20px;';
@@ -175,7 +174,6 @@ function hideProgress() {
     }, PROGRESS_HIDE_DELAY_MS);
 }
 
-// ===== ETA UPDATE FUNCTION =====
 function updateETA() {
     const etaDisplay = document.getElementById('etaDisplay');
     if (!etaDisplay) return;
@@ -195,7 +193,6 @@ function updateETA() {
     const remaining = etaTotal - etaProcessed;
     const etaSeconds = Math.round(avgTimePerChunk * remaining);
     
-    // Hiển thị cả tiến độ file
     const fileInfo = etaTotalFiles > 1 ? ` (File ${etaCurrentFile}/${etaTotalFiles})` : '';
     
     if (etaSeconds < 60) {
@@ -210,7 +207,6 @@ function updateETA() {
         }
     }
 }
-// ===========================
 
 function isSupportedFile(file) {
     const lowerName = file.name.toLowerCase();
@@ -517,6 +513,8 @@ function updatePatchButton() {
         vfi: document.getElementById("enableInterpolation")?.checked || false,
         hdr: document.getElementById("enableHDR")?.checked || false,
         res: document.getElementById("outputResolution")?.value || "1080",
+        turbo: document.getElementById("enableTurbo")?.checked || false,
+        fps: document.getElementById("targetFPS")?.value || "120",
     };
     const settingsChanged = lastSettings && JSON.stringify(lastSettings) !== JSON.stringify(cur);
 
@@ -686,8 +684,6 @@ function getVideoDurationAndResolution(file) {
         reader.readAsArrayBuffer(file);
     });
 }
-
-
 
 function detectVideoCodecFromMoov(bytes, view, moovBox) {
     const moovChildren = parseBoxes(
@@ -917,18 +913,33 @@ function normalizeContainer(inputBytes, inputView) {
 
 async function patchSingleFile(item) {
     const enableInterpolation = document.getElementById("enableInterpolation");
+    const enableHDR = document.getElementById("enableHDR");
     const resolutionEl = document.getElementById("outputResolution");
     const targetRes = resolutionEl
         ? Number.parseInt(resolutionEl.value, 10)
         : 1080;
 
+    // ===== ĐỌC CẤU HÌNH TURBO VÀ FPS =====
+    const enableTurbo = document.getElementById("enableTurbo")?.checked || false;
+    const targetFPS = parseInt(document.getElementById("targetFPS")?.value || "120");
+
     let sourceBuffer = null;
     let movThumbnailBuffer = null;
+
+    // ===== DEBOUNCE PROGRESS =====
+    let lastProgress = 0;
+    const debouncedSetProgress = (pct) => {
+        if (pct - lastProgress >= 2 || pct === 100) {
+            lastProgress = pct;
+            setProgress(pct);
+            setTimeout(() => {}, 0);
+        }
+    };
 
     if (isMovFile(item.file) && !enableInterpolation?.checked) {
         logMessage("Processing MOV file directly...", "info");
         logMessage("Extracting thumbnail from MOV...", "info");
-        movThumbnailBuffer = await extractMovThumbnail(item.file, logMessage, setProgress);
+        movThumbnailBuffer = await extractMovThumbnail(item.file, logMessage, debouncedSetProgress);
         if (isCancelled) throw new Error("Cancelled");
     }
 
@@ -944,6 +955,8 @@ async function patchSingleFile(item) {
         }
 
         const applyHDR = enableHDR?.checked;
+        
+        // ===== TRUYỀN THAM SỐ TURBO VÀ FPS VÀO runVFI =====
         const vfiResult = await runVFI(
             item.file,
             dims.width,
@@ -952,7 +965,9 @@ async function patchSingleFile(item) {
             applyHDR,
             () => isCancelled,
             logMessage,
-            setProgress,
+            debouncedSetProgress,
+            enableTurbo,    // tham số mới
+            targetFPS       // tham số mới
         );
         sourceBuffer = vfiResult.buffer;
         if (vfiResult.thumbnail) {
@@ -978,7 +993,7 @@ async function patchSingleFile(item) {
             targetRes,
             () => isCancelled,
             logMessage,
-            setProgress,
+            debouncedSetProgress,
         );
         sourceBuffer = hdrResult.buffer;
         if (hdrResult.thumbnail) {
@@ -1189,10 +1204,9 @@ patchBtn.addEventListener("click", async () => {
         const item = pendingItems[i];
         etaCurrentFile = i + 1;
         
-        // Reset ETA cho từng file
         etaStartTime = Date.now();
         etaProcessed = 0;
-        etaTotal = 1; // Mỗi file là 1 chunk (hoặc có thể tính số chunk nếu chia nhỏ)
+        etaTotal = 1;
         updateETA();
         
         setProgress(Math.round((i / pendingItems.length) * 100));
@@ -1214,12 +1228,9 @@ patchBtn.addEventListener("click", async () => {
             item.checked = true;
             successCount++;
 
-            // ===== ETA UPDATE =====
             etaProcessed = 1;
             updateETA();
-            // =====================
 
-            // ===== TỰ ĐỘNG TẢI XUỐNG =====
             if (result.finalBuffer) {
                 const blob = new Blob([result.finalBuffer], { type: result.mimeType });
                 const url = URL.createObjectURL(blob);
@@ -1232,7 +1243,6 @@ patchBtn.addEventListener("click", async () => {
                 setTimeout(() => URL.revokeObjectURL(url), 1000);
                 logMessage(`  ✅ Auto-download: ${result.outputName}`, "success");
             }
-            // ===== KẾT THÚC =====
 
             if (result.finalBuffer && result.finalBuffer.byteLength !== undefined) {
                 try {
@@ -1317,7 +1327,6 @@ patchBtn.addEventListener("click", async () => {
 
         renderFileList();
         
-        // Cập nhật ETA sau mỗi file
         const etaDisplay = document.getElementById('etaDisplay');
         if (etaDisplay && i < pendingItems.length - 1) {
             etaDisplay.textContent = `⏱️ ${pendingItems.length - i - 1} files remaining...`;
@@ -1346,7 +1355,9 @@ patchBtn.addEventListener("click", async () => {
     lastSettings = {
         vfi: enableInterpolation?.checked || false,
         hdr: enableHDR?.checked || false,
-        res: document.getElementById("outputResolution")?.value || "1080"
+        res: document.getElementById("outputResolution")?.value || "1080",
+        turbo: document.getElementById("enableTurbo")?.checked || false,
+        fps: document.getElementById("targetFPS")?.value || "120",
     };
     setProgress(100);
     releaseWakeLock();
