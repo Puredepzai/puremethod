@@ -2,11 +2,11 @@ import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
-// ===== CẤU HÌNH =====
-const MAX_THREADS = 2; // Giảm xuống 2 để ổn định hơn
-const CRF_VALUE = 22;
-const PRESET = "veryfast"; // Tạm thời dùng veryfast để test
-// ====================
+// ===== CẤU HÌNH CHẤT LƯỢNG CAO =====
+const MAX_THREADS = 4;
+const CRF_VALUE = 18;
+const PRESET = "slow";
+// ====================================
 
 export async function runVFI(file, width, height, targetRes, applyHDR, isCancelled, logMessage, setProgress) {
     let instance;
@@ -22,17 +22,16 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         logMessage("Preparing video data streams...", "info");
         const fileData = await fetchFile(file);
         await instance.writeFile(inputName, fileData);
-        if (fileData) { fileData = null; }
         if (isCancelled?.()) throw new Error("Cancelled");
 
         const threads = MAX_THREADS;
         logMessage(`Using ${threads} thread(s) for processing`, "info");
         
-        // ==== FILTER ĐƠN GIẢN HƠN (BỎ mpdecimate) ====
+        // ==== FILTER CHẤT LƯỢNG CAO ====
         let filter;
         if (applyHDR) {
             filter =
-                "minterpolate=fps=60:mi_mode=mci:me_mode=bidir:me=epzs:search_param=2," +
+                "minterpolate=fps=60:mi_mode=mci:me_mode=bidir:me=epzs:search_param=4," +
                 "eq=brightness=0.20:contrast=1.25," +
                 "zscale=transfer=linear," +
                 "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
@@ -44,7 +43,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             }
         } else {
             filter =
-                "minterpolate=fps=60:mi_mode=mci:me_mode=bidir:me=epzs:search_param=2";
+                "minterpolate=fps=60:mi_mode=mci:me_mode=bidir:me=epzs:search_param=4";
             if (width > height) {
                 filter = `scale=-2:${targetRes},${filter}`;
             } else {
@@ -52,18 +51,18 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             }
         }
 
-        // ==== ARGS ====
+        // ==== ARGS CHẤT LƯỢNG CAO ====
         let args;
         if (applyHDR) {
-            logMessage("Interpolating to 60fps and converting to HDR10 (HEVC 10-bit)...", "info");
+            logMessage("Interpolating to 60fps and converting to HDR10 (HEVC 10-bit)... Quality: HIGH", "info");
             args = [
                 "-i", inputName,
                 "-vf", filter,
                 "-c:v", "libx265",
                 "-preset", PRESET,
                 "-crf", String(CRF_VALUE),
-                "-maxrate", "20M",
-                "-bufsize", "40M",
+                "-maxrate", "30M",
+                "-bufsize", "60M",
                 "-pix_fmt", "yuv420p10le",
                 "-x265-params", "hdr10=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,50):max-cll=1000,400",
                 "-c:a", "copy",
@@ -73,7 +72,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 outputName,
             ];
         } else {
-            logMessage("Interpolating video frames to 60fps (H.264)...", "info");
+            logMessage("Interpolating video frames to 60fps (H.264)... Quality: HIGH", "info");
             args = [
                 "-i", inputName,
                 "-vf", filter,
@@ -88,14 +87,13 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             ];
         }
 
-        logMessage("Encoding in progress...", "info");
+        logMessage("Encoding in progress (high quality, may take a while)...", "info");
         
         let ret;
         try {
             ret = await instance.exec(args);
         } catch (execError) {
             logMessage(`FFmpeg exec error: ${execError.message}`, "error");
-            // Thử xem có log không
             try {
                 const logData = await instance.readFile("ffmpeg.log").catch(() => null);
                 if (logData) {
