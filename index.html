@@ -1,121 +1,247 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PureMethod</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NoBlur — Post TikTok Videos Without the Blur</title>
+  <meta name="description" content="NoBlur - Post TikTok Videos Without the Blur. Frame density bypass engine to preserve video quality when uploading to TikTok.">
+  <link href="https://fonts.googleapis.com/css2?family=TikTok+Sans:wght@300..900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect x=%2212%22 y=%2212%22 width=%2276%22 height=%2276%22 rx=%2216%22 fill=%22%23000000%22/><rect x=%224%22 y=%224%22 width=%2276%22 height=%2276%22 rx=%2216%22 fill=%22%23facc15%22 stroke=%22%23000000%22 stroke-width=%226%22/><text x=%2242%22 y=%2260%22 font-family=%22'JetBrains Mono', monospace%22 font-weight=%22900%22 font-size=%2252%22 fill=%22%23000000%22 text-anchor=%22middle%22>N</text></svg>">
+  <link rel="stylesheet" href="style.css">
   <script>
-    if (!window.crossOriginIsolated) window.SharedArrayBuffer = undefined;
+    if (!window.crossOriginIsolated) {
+        window.SharedArrayBuffer = undefined;
+    }
   </script>
   <script src="coi-serviceworker.js"></script>
   <script type="importmap">
-    {
-      "imports": {
-        "lucide": "https://esm.sh/lucide@0.475.0",
-        "@ffmpeg/util": "https://esm.sh/@ffmpeg/util@0.12.2",
-        "@ffmpeg/ffmpeg": "https://esm.sh/@ffmpeg/ffmpeg@0.12.15"
-      }
+  {
+    "imports": {
+      "lucide": "https://esm.sh/lucide@0.475.0",
+      "@ffmpeg/util": "https://esm.sh/@ffmpeg/util@0.12.2",
+      "@ffmpeg/ffmpeg": "https://esm.sh/@ffmpeg/ffmpeg@0.12.15"
     }
+  }
   </script>
 </head>
 <body>
-  <script>
-    if (localStorage.getItem('puremethod_key') !== 'abc123') {
-      window.location.href = 'lock.html';
-    }
-  </script>
 
-  <div class="glow-a"></div>
-  <div class="glow-b"></div>
+  <div class="container">
 
-  <div class="app">
-    <header class="reveal" style="--d:0">
-      <div class="header-row">
-        <div class="logo">Pure<span>Method</span></div>
-        <div class="status-pill"><span class="dot"></span>System online</div>
+    <div class="panel panel-left">
+      <div class="header">
+        <div class="header-title">No<span>Blur</span></div>
+        <div class="header-subtitle">Post TikTok Videos Without the Blur &middot; Frame density bypass engine.</div>
       </div>
-      <div class="sub">Bypass TikTok compression · Preserve original quality</div>
-    </header>
 
-    <main>
-      <!-- CỘT TRÁI: SETTINGS & ACTIONS -->
-      <div class="sidebar">
-        <section class="settings reveal" style="--d:1">
-          <div class="section-title">Settings</div>
-
-          <label class="control-item" for="enableInterpolation">
-            <div class="control-text">
-              <span>60fps Interpolation</span>
-              <small>Inflates frame count to 60fps</small>
-            </div>
-            <span class="switch">
-              <input type="checkbox" id="enableInterpolation" />
-              <span class="switch-track"><span class="switch-thumb"></span></span>
-            </span>
-          </label>
-
-          <label class="control-item" for="enableHDR">
-            <div class="control-text">
-              <span>HDR10 Conversion</span>
-              <small>SDR → HDR10 (PQ, BT.2020)</small>
-            </div>
-            <span class="switch">
-              <input type="checkbox" id="enableHDR" />
-              <span class="switch-track"><span class="switch-thumb"></span></span>
-            </span>
-          </label>
-
-          <div class="resolution" id="vfiResolutionBox" style="display:none;">
-            <span>Output Resolution</span>
-            <select id="outputResolution">
-              <option value="1080">1080p</option>
-              <option value="1440">2K (1440p)</option>
-            </select>
+      <div class="control-box">
+        <div class="interpolator-box">
+          <div class="interpolator-header">
+            <span class="interpolator-title">VIDEO SETTING</span>
           </div>
-
-          <div class="note">⚡ Processing speed depends on your device.</div>
-        </section>
-
-        <section class="actions reveal" style="--d:2">
-          <div class="section-title">Run</div>
-          <button class="btn primary" id="patchBtn" disabled>Patch Videos</button>
-          <button class="btn secondary" id="clearBtn">Clear</button>
-          <a class="btn tiktok" href="https://www.tiktok.com/tiktokstudio/upload" target="_blank">Upload to TikTok Studio</a>
-          <div class="progress"><div class="bar" id="progressBar"></div></div>
-          <div class="note">Upload patched video via TikTok Studio web to ensure bypass works.</div>
-        </section>
-      </div>
-
-      <!-- CỘT PHẢI: DROP ZONE -->
-      <div class="content-area reveal" style="--d:3">
-        <section class="drop">
-          <div class="drop-zone" id="dropZone">
-            <div class="scan-line"></div>
-            <div class="icon">⤵</div>
-            <div class="text">
-              <strong>Drop videos here</strong>
-              <span>or click to select · MP4 / MOV</span>
+          <div class="interpolator-options">
+            <label class="checkbox-container">
+              <input type="checkbox" id="enableInterpolation">
+              <span class="checkmark"></span>
+              <span class="label-text">Enable 60fps Interpolation</span>
+            </label>
+            <div class="setting-desc">Inflates frame count to 60fps for TikTok's frame density bypass.</div>
+            <label class="checkbox-container">
+              <input type="checkbox" id="enableHDR">
+              <span class="checkmark"></span>
+              <span class="label-text">Enable HDR10 Conversion</span>
+            </label>
+            <div class="setting-desc">Converts SDR to HDR10 — PQ transfer, BT.2020, HEVC 10-bit.</div>
+          </div>
+          <div class="interpolator-resolution" id="vfiResolutionBox" style="display: none;">
+            <div class="stat-item">
+              <span class="stat-label">OUTPUT RESOLUTION</span>
+              <select class="stat-select" id="outputResolution">
+                <option value="1080" selected>1080p</option>
+                <option value="1440">2K (1440p)</option>
+              </select>
             </div>
           </div>
-          <div class="queue" id="fileList"></div>
-        </section>
+          <div class="interpolator-info">
+            <div class="interpolator-note">
+              <i data-lucide="cpu"></i>
+              <span>Processing speed depends on your device hardware. Multi-core CPU recommended for faster results.</span>
+            </div>
+          </div>
+        </div>
       </div>
-    </main>
+    </div>
 
-    <footer class="reveal" style="--d:4">
-      <div class="log-title">System Log</div>
-      <div class="log-body" id="statusLog"></div>
-    </footer>
+    <div class="panel panel-right">
+      <div class="drop-zone" id="dropZone">
+        <div class="brutalist-upload-box">
+          <i data-lucide="upload"></i>
+        </div>
+        <div class="drop-text">
+          <div class="drop-text-primary">DROP VIDEOS HERE</div>
+          <div class="drop-text-secondary">OR <span>SELECT FILES</span> FROM COMPUTER &middot; MP4 / MOV</div>
+        </div>
+      </div>
 
-    <div class="footer-link reveal" style="--d:5">
-      <a href="https://www.tiktok.com/@pure.xyz" target="_blank">TikTok</a>
+      <div class="queue-and-actions-wrapper">
+        <div class="queue-container">
+          <div class="queue-header">
+            <span class="queue-title">PROCESSING QUEUE</span>
+          </div>
+          <div class="file-list" id="fileList"></div>
+        </div>
+
+        <div class="control-actions">
+          <div class="btn-row">
+            <button class="btn btn-clear" id="clearBtn">Clear</button>
+            <button class="btn btn-patch" id="patchBtn" disabled>
+              <span>Patch Videos</span>
+            </button>
+          </div>
+          <a class="btn btn-tiktok" id="tiktokStudioBtn" href="https://www.tiktok.com/tiktokstudio/upload" target="_blank" rel="noopener noreferrer">
+            Upload to TikTok Studio
+          </a>
+          <div class="upload-note">
+            <i data-lucide="info"></i>
+            <span>Upload patched video via TikTok Studio web to ensure quality-preservation bypass works.</span>
+          </div>
+          <div class="progress-track" id="progressTrack">
+            <div class="progress-bar" id="progressBar"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="history-container">
+        <div class="history-header" id="historyHeader">
+          <div class="history-header-left">
+            <span class="history-title">HISTORY PERSISTENCE</span>
+            <span class="history-badge" id="historyBadge">0</span>
+          </div>
+          <button class="history-toggle-btn" id="historyToggleBtn">
+            <i data-lucide="chevron-down"></i>
+          </button>
+        </div>
+        <div class="history-drawer" id="historyDrawer">
+          <div class="history-list" id="historyList"></div>
+          <div class="history-actions">
+            <button class="btn-clear-history" id="clearHistoryBtn">Clear History</button>
+          </div>
+        </div>
+      </div>
+
+      <input type="file" id="fileInput" accept="video/mp4,video/quicktime,.mp4,.mov" multiple>
+    </div>
+
+    <div class="panel panel-log">
+      <div class="log-header">
+        <span class="log-title">SYSTEM STATUS LOG</span>
+      </div>
+      <div class="status-log" id="statusLog"></div>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    Created by <a href="https://github.com/irgifebry" target="_blank" rel="noopener noreferrer">irgifebry</a> &middot; <a href="https://www.instagram.com/irgi.syh/" target="_blank" rel="noopener noreferrer">Instagram</a> &middot; <a href="https://www.tiktok.com/@wymidk0" target="_blank" rel="noopener noreferrer">TikTok</a>
+    <span id="changelogContainer"></span>
+  </div>
+
+  <div class="modal-overlay" id="vfiModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <i data-lucide="zap"></i>
+          <span class="modal-title">60FPS INTERPOLATION</span>
+        </div>
+        <button class="modal-close-btn" id="closeVfiModalBtn">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-warning-block">
+          <i data-lucide="triangle-alert"></i>
+          <span>Performance Warning</span>
+        </div>
+        <ul class="modal-warning-list">
+          <li>Processing speed depends entirely on your local device hardware.</li>
+          <li>Low-end CPUs may take several minutes per video.</li>
+          <li>Multi-core CPUs deliver significantly faster results.</li>
+          <li>Output resolution is controlled by the selector above.</li>
+        </ul>
+        <div class="modal-footer-note">
+          By enabling this feature you acknowledge that processing time is not guaranteed and may vary significantly based on your hardware capabilities.
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn modal-btn-cancel" id="cancelVfiBtn">Cancel</button>
+        <button class="modal-btn modal-btn-confirm" id="confirmVfiBtn">Enable Anyway</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-overlay" id="hdrModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <i data-lucide="zap"></i>
+          <span class="modal-title">HDR10 CONVERSION</span>
+        </div>
+        <button class="modal-close-btn" id="closeHdrModalBtn">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-warning-block">
+          <i data-lucide="triangle-alert"></i>
+          <span>Performance Warning</span>
+        </div>
+        <ul class="modal-warning-list">
+          <li>HDR conversion uses HEVC 10-bit encoding and is CPU-intensive.</li>
+          <li>Processing time may be significantly longer than standard patch.</li>
+          <li>Output file size will be larger than original.</li>
+          <li>Multi-core CPU recommended for faster results.</li>
+        </ul>
+        <div class="modal-footer-note">
+          Converts SDR content to HDR10 (PQ transfer function, BT.2020 primaries).
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn modal-btn-cancel" id="cancelHdrBtn">Cancel</button>
+        <button class="modal-btn modal-btn-confirm" id="confirmHdrBtn">Enable Anyway</button>
+      </div>
     </div>
   </div>
 
-  <!-- INPUT ĐÃ ĐƯỢC ẨN ĐI BẰNG CSS -->
-  <input type="file" id="fileInput" accept="video/mp4,video/quicktime,.mp4,.mov" multiple />
+  <div class="modal-overlay" id="tiktokModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <i data-lucide="upload"></i>
+          <span class="modal-title">UPLOAD TO TIKTOK STUDIO</span>
+        </div>
+        <button class="modal-close-btn" id="closeTiktokModalBtn">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-warning-block">
+          <i data-lucide="info"></i>
+          <span>Enable Desktop Mode First</span>
+        </div>
+        <ul class="modal-warning-list">
+          <li>TikTok Studio upload only works in desktop mode browser.</li>
+          <li>On Chrome: tap the 3-dot menu → check "Desktop site".</li>
+          <li>On Safari: tap "AA" in the address bar → "Request Desktop Website".</li>
+          <li>On Samsung Browser: tap menu → "Desktop view".</li>
+          <li>After enabling, tap the button below to open TikTok Studio.</li>
+        </ul>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn modal-btn-cancel" id="cancelTiktokModalBtn">Cancel</button>
+        <a class="modal-btn modal-btn-confirm" id="confirmTiktokBtn" href="https://www.tiktok.com/tiktokstudio/upload" target="_blank" rel="noopener noreferrer">Open TikTok Studio</a>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="app.js"></script>
 </body>
 </html>
