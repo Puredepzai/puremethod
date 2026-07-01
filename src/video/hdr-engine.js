@@ -53,11 +53,13 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
         }
         logMessage("Encoding complete.", "success");
 
-        const thumbnailBuffer = await extractThumbnailFromInstance(instance, outputName, logMessage);
         const data = await instance.readFile(outputName);
         if (!data || data.byteLength < 100) {
             throw new Error("FFmpeg produced an empty or invalid output file.");
         }
+
+        // Thumbnail after readFile to avoid double memory spike
+        const thumbnailBuffer = await extractThumbnailFromInstance(instance, outputName, logMessage);
 
         return { buffer: data.buffer, thumbnail: thumbnailBuffer };
     } catch (err) {
