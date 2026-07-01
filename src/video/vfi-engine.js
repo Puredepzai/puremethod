@@ -3,7 +3,7 @@ import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpe
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
 // ===== BẬT GHOST MODE =====
-const GHOST_MODE = true; // true = fake, false = real
+const GHOST_MODE = false; // true = fake, false = real
 
 export async function runVFI(file, width, height, targetRes, applyHDR, isCancelled, logMessage, setProgress) {
     // ===== GHOST MODE =====
