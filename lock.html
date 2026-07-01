@@ -5,12 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PureMethod — Access Key</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       background: #000000;
       display: flex;
@@ -21,7 +16,6 @@
       color: #ffffff;
       padding: 20px;
     }
-
     .lock-card {
       background: #111111;
       border: 2px solid #333333;
@@ -32,32 +26,10 @@
       text-align: center;
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
     }
-
-    .lock-icon {
-      font-size: 48px;
-      margin-bottom: 16px;
-      display: block;
-    }
-
-    .lock-title {
-      font-size: 28px;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      margin-bottom: 8px;
-      color: #ffffff;
-    }
-
-    .lock-title span {
-      color: #aaaaaa;
-    }
-
-    .lock-sub {
-      font-size: 14px;
-      color: #888888;
-      margin-bottom: 32px;
-      font-weight: 400;
-    }
-
+    .lock-icon { font-size: 48px; margin-bottom: 16px; display: block; }
+    .lock-title { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: #ffffff; }
+    .lock-title span { color: #aaaaaa; }
+    .lock-sub { font-size: 14px; color: #888888; margin-bottom: 32px; font-weight: 400; }
     .lock-input {
       width: 100%;
       padding: 14px 16px;
@@ -71,15 +43,8 @@
       transition: border-color 0.2s ease;
       box-sizing: border-box;
     }
-
-    .lock-input:focus {
-      border-color: #ffffff;
-    }
-
-    .lock-input::placeholder {
-      color: #555555;
-    }
-
+    .lock-input:focus { border-color: #ffffff; }
+    .lock-input::placeholder { color: #555555; }
     .lock-btn {
       width: 100%;
       padding: 14px;
@@ -94,49 +59,15 @@
       cursor: pointer;
       transition: all 0.15s ease;
     }
-
-    .lock-btn:hover {
-      background: #000000;
-      color: #ffffff;
-      border-color: #ffffff;
-    }
-
-    .lock-btn:active {
-      transform: scale(0.97);
-    }
-
-    .lock-error {
-      color: #ff5555;
-      font-size: 13px;
-      margin-top: 14px;
-      min-height: 20px;
-      font-weight: 500;
-    }
-
-    .lock-footer {
-      margin-top: 32px;
-      font-size: 12px;
-      color: #444444;
-      border-top: 1px solid #222222;
-      padding-top: 20px;
-    }
-
-    .lock-footer a {
-      color: #666666;
-      text-decoration: none;
-    }
-
-    .lock-footer a:hover {
-      color: #ffffff;
-    }
-
+    .lock-btn:hover { background: #000000; color: #ffffff; border-color: #ffffff; }
+    .lock-btn:active { transform: scale(0.97); }
+    .lock-error { color: #ff5555; font-size: 13px; margin-top: 14px; min-height: 20px; font-weight: 500; }
+    .lock-footer { margin-top: 32px; font-size: 12px; color: #444444; border-top: 1px solid #222222; padding-top: 20px; }
+    .lock-footer a { color: #666666; text-decoration: none; }
+    .lock-footer a:hover { color: #ffffff; }
     @media (max-width: 480px) {
-      .lock-card {
-        padding: 32px 20px;
-      }
-      .lock-title {
-        font-size: 22px;
-      }
+      .lock-card { padding: 32px 20px; }
+      .lock-title { font-size: 22px; }
     }
   </style>
 </head>
@@ -151,15 +82,15 @@
     <div class="lock-error" id="lockError"></div>
 
     <div class="lock-footer">
-      <a href="#" id="resetKey" style="cursor: pointer;">Reset device</a>
+      <a href="#" id="resetDevice" style="cursor: pointer;">Reset device</a>
     </div>
   </div>
 
   <script>
-    // ===== KEY CỦA WEB (đổi ở đây) =====
+    // ===== KEY HỢP LỆ (đổi ở đây) =====
     const VALID_KEY = "abc123";
 
-    // ===== TẠO FINGERPRINT DUY NHẤT CHO THIẾT BỊ =====
+    // ===== FINGERPRINT =====
     function getDeviceFingerprint() {
       const components = [
         navigator.userAgent,
@@ -169,15 +100,22 @@
         navigator.language,
         new Date().getTimezoneOffset()
       ];
-      const raw = components.join('|||');
-      // Mã hóa base64 để có chuỗi ngắn
-      return btoa(encodeURIComponent(raw));
+      return btoa(encodeURIComponent(components.join('|||')));
     }
 
     const deviceId = getDeviceFingerprint();
-    const savedDevice = localStorage.getItem('puremethod_device');
 
-    // ===== UNLOCK LOGIC =====
+    // ===== KIỂM TRA ĐÃ KÍCH HOẠT CHƯA =====
+    const savedKey = localStorage.getItem('puremethod_key');
+    const savedDevice = localStorage.getItem('puremethod_device');
+    const isActivated = localStorage.getItem('puremethod_activated') === 'true';
+
+    // Nếu đã kích hoạt và đúng device -> vào web
+    if (isActivated && savedKey === VALID_KEY && savedDevice === deviceId) {
+      window.location.href = 'index.html';
+    }
+
+    // ===== XỬ LÝ UNLOCK =====
     const input = document.getElementById('keyInput');
     const btn = document.getElementById('unlockBtn');
     const error = document.getElementById('lockError');
@@ -185,6 +123,7 @@
     function tryUnlock() {
       const key = input.value.trim();
 
+      // Sai key
       if (key !== VALID_KEY) {
         error.textContent = '❌ Invalid key.';
         input.value = '';
@@ -192,23 +131,19 @@
         return;
       }
 
-      // Nếu chưa có device nào được lưu -> lưu device này
-      if (!savedDevice) {
-        localStorage.setItem('puremethod_key', key);
-        localStorage.setItem('puremethod_device', deviceId);
-        window.location.href = 'index.html';
+      // Key đã được sử dụng (bất kể device nào)
+      if (isActivated) {
+        error.textContent = '❌ This key has already been used.';
+        input.value = '';
+        input.focus();
         return;
       }
 
-      // Nếu đã có device lưu -> so sánh với device hiện tại
-      if (savedDevice === deviceId) {
-        localStorage.setItem('puremethod_key', key);
-        window.location.href = 'index.html';
-      } else {
-        error.textContent = '❌ This key is already used on another device.';
-        input.value = '';
-        input.focus();
-      }
+      // Lần đầu kích hoạt -> lưu key + device + đánh dấu đã dùng
+      localStorage.setItem('puremethod_key', key);
+      localStorage.setItem('puremethod_device', deviceId);
+      localStorage.setItem('puremethod_activated', 'true');
+      window.location.href = 'index.html';
     }
 
     btn.addEventListener('click', tryUnlock);
@@ -216,20 +151,15 @@
       if (e.key === 'Enter') tryUnlock();
     });
 
-    // ===== RESET DEVICE (cho phép dùng lại trên máy khác) =====
-    document.getElementById('resetKey').addEventListener('click', function(e) {
+    // ===== RESET (cho phép dùng key mới trên thiết bị mới) =====
+    document.getElementById('resetDevice').addEventListener('click', function(e) {
       e.preventDefault();
       localStorage.removeItem('puremethod_key');
       localStorage.removeItem('puremethod_device');
-      error.textContent = '✅ Device reset. You can use the key on a new device.';
+      localStorage.removeItem('puremethod_activated');
+      error.textContent = '✅ Device reset. You can use a new key.';
       setTimeout(() => location.reload(), 1200);
     });
-
-    // Nếu đã có key hợp lệ và đúng device -> chuyển thẳng vào web
-    const savedKey = localStorage.getItem('puremethod_key');
-    if (savedKey === VALID_KEY && savedDevice === deviceId) {
-      window.location.href = 'index.html';
-    }
 
     input.focus();
   </script>
