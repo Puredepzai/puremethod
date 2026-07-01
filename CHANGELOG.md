@@ -2,21 +2,21 @@
 
 All notable changes to the NoBlur project are documented in this file.
 
-## [2.5.0] - 2026-06-18
+## [2.6.0] - 2026-06-18
 
-**HDR10 Conversion Pipeline + Unified HEVC Encoding**
+**Reprocess Workflow + Memory Optimization**
 
 ### Added
-- SDR to HDR10 conversion via PQ transfer (`smpte2084`) with BT.2020 color space
-- Tone expansion filters: `eq=brightness=0.20:contrast=1.25` + `zscale` PQ transfer
-- HEVC 10-bit HDR output (libx265, preset fast, CRF 18, maxrate 20M, bufsize 40M) with full HDR10 metadata (master-display, max-cll=1000,400)
-- HEVC 8-bit VFI output (libx265, preset ultrafast, CRF 20) for WASM memory safety
-- Two-stage VFI+HDR pipeline (sequential FFmpeg instances to prevent WASM OOM)
-- HDR preview thumbnail extraction from FFmpeg instance
-- Resolution selector enabled for HDR mode
-- MOV input auto re-encodes PCM audio to AAC 256k
-- FFmpeg exec exit code validation and output file size verification
-- Deduplicated system log messages (removed double engine load, redundant progress messages)
+- **Reprocess Button:** Settings change after processing completion triggers "Reprocess" mode to re-run pipelines without re-uploading.
+- **Single-Pass VFI+HDR Pipeline:** Merged sequential VFI and HDR stages into one FFmpeg execution to minimize memory footprint.
+- **Retry Mechanism:** Error status now triggers "Retry Failed" button for affected files.
+
+### Changed
+- **Memory Optimization:** Reverted VFI-only to `libx264` (H.264) to significantly reduce WASM heap usage.
+- **Thumbnail Handling:** Moved thumbnail extraction after `readFile` to reduce peak memory during encoding.
+- **Audio Stream Copy:** Both VFI and HDR pipelines now use `-c:a copy` to avoid re-encoding.
+- **Preset Tuning:** VFI-only H.264 preset changed to `fast` for better balance of quality/time.
+
 
 ## [2.4.0] - 2026-06-18
 
