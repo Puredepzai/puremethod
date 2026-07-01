@@ -34,55 +34,68 @@
     </header>
 
     <main>
-      <section class="settings">
-        <div class="section-title">Settings</div>
-        <label>
-          <input type="checkbox" id="enableInterpolation" />
-          <span>60fps Interpolation</span>
-          <small>Inflates frame count to 60fps</small>
-        </label>
-        <label>
-          <input type="checkbox" id="enableHDR" />
-          <span>HDR10 Conversion</span>
-          <small>SDR → HDR10 (PQ, BT.2020)</small>
-        </label>
-        <div class="resolution" id="vfiResolutionBox" style="display:none;">
-          <span>Output Resolution</span>
-          <select id="outputResolution">
-            <option value="1080">1080p</option>
-            <option value="1440">2K (1440p)</option>
-          </select>
-        </div>
-        <div class="note">⚡ Processing speed depends on your device.</div>
-      </section>
+      <!-- CỘT TRÁI: SETTINGS & ACTIONS -->
+      <div class="sidebar">
+        <section class="settings">
+          <div class="section-title">Configuration</div>
+          
+          <label class="control-card">
+            <div class="control-info">
+              <span>60fps Interpolation</span>
+              <small>Inflates frame count to 60fps</small>
+            </div>
+            <input type="checkbox" id="enableInterpolation" />
+          </label>
 
-      <section class="drop">
-        <div class="drop-zone" id="dropZone">
-          <div class="icon">⤵</div>
-          <div class="text">
-            <strong>Drop videos here</strong>
-            <span>or click to select · MP4 / MOV</span>
+          <label class="control-card">
+            <div class="control-info">
+              <span>HDR10 Conversion</span>
+              <small>SDR → HDR10 (PQ, BT.2020)</small>
+            </div>
+            <input type="checkbox" id="enableHDR" />
+          </label>
+
+          <div class="resolution" id="vfiResolutionBox" style="display:none;">
+            <span>Output Resolution</span>
+            <select id="outputResolution">
+              <option value="1080">1080p (Standard)</option>
+              <option value="1440">2K (1440p Premium)</option>
+            </select>
           </div>
-        </div>
-        <div class="queue" id="fileList"></div>
-      </section>
+          <div class="note">⚡ Speed depends on your hardware acceleration.</div>
+        </section>
 
-      <section class="actions">
-        <button class="btn primary" id="patchBtn" disabled>Patch Videos</button>
-        <button class="btn secondary" id="clearBtn">Clear</button>
-        <a class="btn tiktok" href="https://www.tiktok.com/tiktokstudio/upload" target="_blank">Upload to TikTok Studio</a>
-        <div class="progress"><div class="bar" id="progressBar"></div></div>
-        <div class="note">Upload patched video via TikTok Studio web to ensure bypass works.</div>
-      </section>
+        <section class="actions">
+          <button class="btn primary" id="patchBtn" disabled>Patch Videos</button>
+          <button class="btn secondary" id="clearBtn">Clear Queue</button>
+          <a class="btn tiktok" href="https://www.tiktok.com/tiktokstudio/upload" target="_blank">Open TikTok Studio</a>
+          <div class="progress"><div class="bar" id="progressBar"></div></div>
+          <div class="note">Upload via TikTok Studio Web to completely bypass compression.</div>
+        </section>
+      </div>
+
+      <!-- CỘT PHẢI: DROP ZONE & QUEUE -->
+      <div class="content-area">
+        <section class="drop">
+          <div class="drop-zone" id="dropZone">
+            <div class="icon">🖲️</div>
+            <div class="text">
+              <strong>Drag & drop your videos</strong>
+              <span>or click to browse local files (MP4, MOV)</span>
+            </div>
+          </div>
+          <div class="queue" id="fileList"></div>
+        </section>
+      </div>
     </main>
 
     <footer>
-      <div class="log-title">System Log</div>
+      <div class="log-title">Console Logs</div>
       <div class="log-body" id="statusLog"></div>
     </footer>
 
     <div class="footer-link">
-      <a href="https://www.tiktok.com/@pure.xyz" target="_blank">TikTok</a>
+      <a href="https://www.tiktok.com/@pure.xyz" target="_blank">Follow on TikTok</a>
     </div>
   </div>
 
