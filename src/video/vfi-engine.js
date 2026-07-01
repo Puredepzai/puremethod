@@ -2,11 +2,11 @@ import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
-// ===== CẤU HÌNH CHẤT LƯỢNG CAO =====
+// ===== CẤU HÌNH =====
 const MAX_THREADS = 4;
 const CRF_VALUE = 18;
 const PRESET = "slow";
-// ====================================
+// ====================
 
 export async function runVFI(file, width, height, targetRes, applyHDR, isCancelled, logMessage, setProgress) {
     let instance;
@@ -27,11 +27,11 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         const threads = MAX_THREADS;
         logMessage(`Using ${threads} thread(s) for processing`, "info");
         
-        // ==== FILTER CHẤT LƯỢNG CAO ====
+        // ==== THỬ FILTER ĐƠN GIẢN (BỎ MINTERPOLATE) =====
+        // Filter này chỉ scale và thay đổi brightness, không interpolate
         let filter;
         if (applyHDR) {
             filter =
-                "minterpolate=fps=60:mi_mode=mci:me_mode=bidir:me=epzs:search_param=4," +
                 "eq=brightness=0.20:contrast=1.25," +
                 "zscale=transfer=linear," +
                 "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
@@ -42,19 +42,18 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 filter = `scale=${targetRes}:-2,${filter}`;
             }
         } else {
-            filter =
-                "minterpolate=fps=60:mi_mode=mci:me_mode=bidir:me=epzs:search_param=4";
+            // Chỉ scale, không interpolate
             if (width > height) {
-                filter = `scale=-2:${targetRes},${filter}`;
+                filter = `scale=-2:${targetRes}`;
             } else {
-                filter = `scale=${targetRes}:-2,${filter}`;
+                filter = `scale=${targetRes}:-2`;
             }
         }
 
-        // ==== ARGS CHẤT LƯỢNG CAO ====
+        // ==== ARGS ====
         let args;
         if (applyHDR) {
-            logMessage("Interpolating to 60fps and converting to HDR10 (HEVC 10-bit)... Quality: HIGH", "info");
+            logMessage("Converting to HDR10 (HEVC 10-bit)... (NO interpolation)", "info");
             args = [
                 "-i", inputName,
                 "-vf", filter,
@@ -72,7 +71,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 outputName,
             ];
         } else {
-            logMessage("Interpolating video frames to 60fps (H.264)... Quality: HIGH", "info");
+            logMessage("Scaling video (NO interpolation)...", "info");
             args = [
                 "-i", inputName,
                 "-vf", filter,
@@ -87,7 +86,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             ];
         }
 
-        logMessage("Encoding in progress (high quality, may take a while)...", "info");
+        logMessage("Encoding in progress (no interpolation)...", "info");
         
         let ret;
         try {
