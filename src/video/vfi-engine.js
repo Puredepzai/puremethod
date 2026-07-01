@@ -7,23 +7,23 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
     const ext = resolveInputExtension(file);
     const inputName = `input${ext}`;
     const outputName = applyHDR ? "output.mp4" : `output${ext}`;
-    
     try {
-        if (isCancelled?.()) throw new Error("Cancelled");
+        if (isCancelled()) throw new Error("Cancelled");
         instance = await getFFmpeg(logMessage, setProgress);
-        if (isCancelled?.()) throw new Error("Cancelled");
+        if (isCancelled()) throw new Error("Cancelled");
 
-        // Gọi logMessage an toàn
-        if (logMessage) logMessage("Preparing video data streams...", "info");
+        logMessage("Preparing video data streams...", "info");
         await instance.writeFile(inputName, await fetchFile(file));
-        if (isCancelled?.()) throw new Error("Cancelled");
+        if (isCancelled()) throw new Error("Cancelled");
 
-        const threads = Math.min(navigator.hardwareConcurrency || 4, 4);
+        // Giữ nguyên threads từ NoBlur gốc (dùng hardwareConcurrency)
+        const threads = Math.min(navigator.hardwareConcurrency || 4, 8);
         
+        // Filter giữ nguyên y hệt NoBlur gốc
         let filter;
         if (applyHDR) {
             filter =
-                "minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4," +
+                "mpdecimate,minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4," +
                 "eq=brightness=0.20:contrast=1.25," +
                 "zscale=transfer=linear," +
                 "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
@@ -35,7 +35,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             }
         } else {
             filter =
-                "minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4";
+                "mpdecimate,minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4";
             if (width > height) {
                 filter = `scale=-2:${targetRes},${filter}`;
             } else {
@@ -43,69 +43,11 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             }
         }
 
-        // ===== GIỚI HẠN THREAD VÀ CHUNK =====
-        const fileSizeMB = file.size / (1024 * 1024);
-        const useChunk = fileSizeMB > 100;
-        
-        if (useChunk) {
-            if (logMessage) logMessage(`File > 100MB, using chunk processing...`, "info");
-            
-            const numChunks = 4;
-            const chunkDuration = 5;
-            let chunkFiles = [];
-            
-            for (let i = 0; i < numChunks; i++) {
-                if (isCancelled?.()) throw new Error("Cancelled");
-                
-                const start = i * chunkDuration;
-                const chunkInput = `chunk_${i}${ext}`;
-                const chunkOutput = `chunk_out_${i}.mp4`;
-                
-                await instance.exec(["-i", inputName, "-ss", String(start), "-t", String(chunkDuration), "-c", "copy", chunkInput]);
-                
-                const processArgs = [
-                    "-i", chunkInput,
-                    "-vf", filter,
-                    "-c:v", applyHDR ? "libx265" : "libx264",
-                    "-preset", "fast",
-                    "-crf", applyHDR ? "18" : "20",
-                    "-c:a", "copy",
-                    "-threads", String(threads),
-                    "-max_muxing_queue_size", "2048",
-                    chunkOutput
-                ];
-                
-                let ret = await instance.exec(processArgs);
-                if (ret !== 0 && ret !== undefined) {
-                    throw new Error(`Chunk ${i} failed with code ${ret}`);
-                }
-                
-                chunkFiles.push(chunkOutput);
-                if (logMessage) logMessage(`Chunk ${i+1}/${numChunks} done`, "info");
-                await instance.deleteFile(chunkInput).catch(() => {});
-                
-                // ===== CẬP NHẬT PROGRESS AN TOÀN =====
-                if (setProgress) {
-                    try {
-                        setProgress(Math.round(((i + 1) / numChunks) * 80));
-                    } catch (_) {}
-                }
-            }
-            
-            // Ghép chunk
-            if (logMessage) logMessage("Merging chunks...", "info");
-            const concatList = chunkFiles.map(f => `file '${f}'`).join('\n');
-            await instance.writeFile("concat.txt", concatList);
-            await instance.exec(["-f", "concat", "-safe", "0", "-i", "concat.txt", "-c", "copy", outputName]);
-            
-            for (const f of chunkFiles) {
-                await instance.deleteFile(f).catch(() => {});
-            }
-            await instance.deleteFile("concat.txt").catch(() => {});
-            
-        } else {
-            // Xử lý bình thường
-            const args = applyHDR ? [
+        // Args giữ nguyên y hệt NoBlur gốc
+        let args;
+        if (applyHDR) {
+            logMessage("Interpolating to 60fps and converting to HDR10 (HEVC 10-bit)... This will take a few minutes.", "info");
+            args = [
                 "-i", inputName,
                 "-vf", filter,
                 "-c:v", "libx265",
@@ -119,7 +61,10 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 "-video_track_timescale", "90000",
                 "-threads", String(threads),
                 outputName,
-            ] : [
+            ];
+        } else {
+            logMessage("Interpolating video frames to 60fps (H.264)... This may take a bit longer.", "info");
+            args = [
                 "-i", inputName,
                 "-vf", filter,
                 "-c:v", "libx264",
@@ -130,15 +75,21 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 "-threads", String(threads),
                 outputName,
             ];
-            
-            if (logMessage) logMessage("Encoding in progress...", "info");
-            const ret = await instance.exec(args);
-            if (ret !== 0 && ret !== undefined) {
-                throw new Error(`FFmpeg exited with code ${ret}`);
-            }
         }
 
-        // ===== ĐỌC OUTPUT =====
+        // ===== THÊM GIỚI HẠN MEMORY (KHÔNG ẢNH HƯỞNG QUALITY) =====
+        try {
+            await instance.setMemoryLimit(2048 * 1024 * 1024); // 2GB
+        } catch (_) {}
+        // =====================================================
+
+        logMessage("Encoding in progress, please wait...", "info");
+        const ret = await instance.exec(args);
+        if (ret !== 0 && ret !== undefined) {
+            throw new Error(`FFmpeg exited with code ${ret}`);
+        }
+        logMessage("Encoding complete.", "success");
+
         const data = await instance.readFile(outputName);
         if (!data || data.byteLength < 100) {
             throw new Error("FFmpeg produced an empty or invalid output file.");
@@ -149,28 +100,14 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             thumbnailBuffer = await extractThumbnailFromInstance(instance, outputName, logMessage);
         }
 
-        // ===== CẬP NHẬT PROGRESS CUỐI =====
-        if (setProgress) {
-            try { setProgress(100); } catch (_) {}
-        }
-
         return { buffer: data.buffer, thumbnail: thumbnailBuffer };
-        
     } catch (err) {
-        // ===== BẮT LỖI VÀ LOG AN TOÀN =====
-        if (logMessage) {
-            try { logMessage(`VFI Error: ${err.message}`, "error"); } catch (_) {}
-        }
         await destroyFFmpegInstance();
         throw err;
     } finally {
         if (instance) {
             await instance.deleteFile(inputName).catch(() => {});
             await instance.deleteFile(outputName).catch(() => {});
-        }
-        // ===== GIẢI PHÓNG RAM =====
-        if (window.gc) {
-            try { window.gc(); } catch (_) {}
         }
     }
 }
