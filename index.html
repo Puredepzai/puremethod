@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PureMethod — Post TikTok Videos Without The pure method</title>
-  <meta name="description" content="PureMethod - Post TikTok Videos Without The Blur. Frame density bypass engine." />
+  <title>PureMethod — Bypass TikTok Compression</title>
+  <meta name="description" content="PureMethod - Bypass TikTok compression, preserve video quality." />
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
   <script>
@@ -28,127 +28,76 @@
     }
   </script>
 
-  <div class="container">
-    <!-- LEFT PANEL -->
-    <div class="panel panel-left">
-      <div class="header">
-        <div class="header-title">Pure<span>Method</span></div>
-        <div class="header-subtitle">Post TikTok Videos Without The Blur · Frame density bypass engine.</div>
-      </div>
+  <div class="app">
+    <!-- HEADER -->
+    <header class="header">
+      <div class="logo">Pure<span>Method</span></div>
+      <div class="tagline">Bypass TikTok compression · Preserve original quality</div>
+    </header>
 
-      <div class="control-box">
-        <div class="interpolator-box">
-          <div class="interpolator-header">
-            <span class="interpolator-title">VIDEO SETTINGS</span>
-          </div>
-          <div class="interpolator-options">
-            <label class="checkbox-container">
-              <input type="checkbox" id="enableInterpolation" />
-              <span class="checkmark"></span>
-              <span class="label-text">Enable 60fps Interpolation</span>
-            </label>
-            <div class="setting-desc">Inflates frame count to 60fps for TikTok's frame density bypass.</div>
-            <label class="checkbox-container">
-              <input type="checkbox" id="enableHDR" />
-              <span class="checkmark"></span>
-              <span class="label-text">Enable HDR10 Conversion</span>
-            </label>
-            <div class="setting-desc">Converts SDR to HDR10 — PQ transfer, BT.2020, HEVC 10-bit.</div>
-          </div>
-          <div class="interpolator-resolution" id="vfiResolutionBox" style="display: none;">
-            <div class="stat-item">
-              <span class="stat-label">OUTPUT RESOLUTION</span>
-              <select class="stat-select" id="outputResolution">
-                <option value="1080" selected>1080p</option>
-                <option value="1440">2K (1440p)</option>
-              </select>
-            </div>
-          </div>
-          <div class="interpolator-info">
-            <div class="interpolator-note">
-              <i data-lucide="cpu"></i>
-              <span>Processing speed depends on your device hardware. Multi-core CPU recommended.</span>
-            </div>
+    <!-- MAIN -->
+    <main class="main">
+      <!-- LEFT: Settings -->
+      <section class="settings">
+        <h2>Settings</h2>
+        <label class="toggle">
+          <input type="checkbox" id="enableInterpolation" />
+          <span>60fps Interpolation</span>
+          <small>Inflates frame count to 60fps</small>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="enableHDR" />
+          <span>HDR10 Conversion</span>
+          <small>SDR → HDR10 (PQ, BT.2020)</small>
+        </label>
+        <div class="resolution" id="vfiResolutionBox" style="display:none;">
+          <label>Output Resolution</label>
+          <select id="outputResolution">
+            <option value="1080">1080p</option>
+            <option value="1440">2K (1440p)</option>
+          </select>
+        </div>
+        <div class="note">
+          <span>⚡ Processing speed depends on your device.</span>
+        </div>
+      </section>
+
+      <!-- CENTER: Drop Zone -->
+      <section class="drop">
+        <div class="drop-zone" id="dropZone">
+          <div class="icon">📁</div>
+          <div class="text">
+            <strong>Drop videos here</strong>
+            <span>or click to select · MP4 / MOV</span>
           </div>
         </div>
-      </div>
-    </div>
+        <div class="queue" id="fileList"></div>
+      </section>
 
-    <!-- RIGHT PANEL -->
-    <div class="panel panel-right">
-      <div class="drop-zone" id="dropZone">
-        <div class="brutalist-upload-box">
-          <i data-lucide="upload"></i>
+      <!-- RIGHT: Actions -->
+      <section class="actions">
+        <button class="btn btn-patch" id="patchBtn" disabled>Patch Videos</button>
+        <button class="btn btn-clear" id="clearBtn">Clear</button>
+        <a class="btn btn-tiktok" href="https://www.tiktok.com/tiktokstudio/upload" target="_blank">Upload to TikTok Studio</a>
+        <div class="progress" id="progressTrack">
+          <div class="bar" id="progressBar"></div>
         </div>
-        <div class="drop-text">
-          <div class="drop-text-primary">DROP VIDEOS HERE</div>
-          <div class="drop-text-secondary">OR <span>SELECT FILES</span> FROM COMPUTER · MP4 / MOV</div>
-        </div>
-      </div>
+        <div class="note">Upload patched video via TikTok Studio web to ensure bypass works.</div>
+      </section>
+    </main>
 
-      <div class="queue-and-actions-wrapper">
-        <div class="queue-container">
-          <div class="queue-header">
-            <span class="queue-title">PROCESSING QUEUE</span>
-          </div>
-          <div class="file-list" id="fileList"></div>
-        </div>
+    <!-- LOG -->
+    <footer class="log">
+      <div class="log-header">System Log</div>
+      <div class="log-body" id="statusLog"></div>
+    </footer>
 
-        <div class="control-actions">
-          <div class="btn-row">
-            <button class="btn btn-clear" id="clearBtn">Clear</button>
-            <button class="btn btn-patch" id="patchBtn" disabled>
-              <span>Patch Videos</span>
-            </button>
-          </div>
-          <a class="btn btn-tiktok" id="tiktokStudioBtn" href="https://www.tiktok.com/tiktokstudio/upload" target="_blank" rel="noopener noreferrer">
-            Upload to TikTok Studio
-          </a>
-          <div class="upload-note">
-            <i data-lucide="info"></i>
-            <span>Upload patched video via TikTok Studio web to ensure bypass works.</span>
-          </div>
-          <div class="progress-track" id="progressTrack">
-            <div class="progress-bar" id="progressBar"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="history-container">
-        <div class="history-header" id="historyHeader">
-          <div class="history-header-left">
-            <span class="history-title">HISTORY PERSISTENCE</span>
-            <span class="history-badge" id="historyBadge">0</span>
-          </div>
-          <button class="history-toggle-btn" id="historyToggleBtn">
-            <i data-lucide="chevron-down"></i>
-          </button>
-        </div>
-        <div class="history-drawer" id="historyDrawer">
-          <div class="history-list" id="historyList"></div>
-          <div class="history-actions">
-            <button class="btn-clear-history" id="clearHistoryBtn">Clear History</button>
-          </div>
-        </div>
-      </div>
-
-      <input type="file" id="fileInput" accept="video/mp4,video/quicktime,.mp4,.mov" multiple>
-    </div>
-
-    <!-- LOG PANEL -->
-    <div class="panel panel-log">
-      <div class="log-header">
-        <span class="log-title">SYSTEM STATUS LOG</span>
-      </div>
-      <div class="status-log" id="statusLog"></div>
+    <div class="footer-links">
+      <a href="https://www.tiktok.com/@pure.xyz" target="_blank">TikTok</a>
     </div>
   </div>
 
-  <div class="footer">
-    <a href="https://www.tiktok.com/@pure.xyz" target="_blank" rel="noopener noreferrer">TikTok</a>
-    <span id="changelogContainer"></span>
-  </div>
-
+  <input type="file" id="fileInput" accept="video/mp4,video/quicktime,.mp4,.mov" multiple />
   <script type="module" src="app.js"></script>
 </body>
 </html>
