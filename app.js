@@ -47,6 +47,15 @@ const MOBILE_SCROLL_DELAY_MS = 150;
 const DOWNLOAD_ANCHOR_CLEANUP_MS = 100;
 const SAFE_THUMBNAIL_PREFIX = "data:image/jpeg;base64,";
 
+// ===== ETA VARIABLES =====
+let etaStartTime = 0;
+let etaProcessed = 0;
+let etaTotal = 0;
+let etaInterval = null;
+let etaCurrentFile = 0;
+let etaTotalFiles = 0;
+// =========================
+
 const ALL_ICONS = {
     Upload,
     X,
@@ -121,6 +130,16 @@ function initializeApp() {
     renderHistoryList();
     adjustMobileLayout();
     window.addEventListener("resize", adjustMobileLayout);
+    
+    // Khởi tạo ETA display
+    const etaDisplay = document.createElement('div');
+    etaDisplay.id = 'etaDisplay';
+    etaDisplay.style.cssText = 'font-family: monospace; font-size: 13px; color: #aaa; text-align: center; margin-top: 4px; min-height: 20px;';
+    etaDisplay.textContent = '⏱️ Waiting...';
+    const progressTrack = document.getElementById('progressTrack');
+    if (progressTrack) {
+        progressTrack.parentNode.insertBefore(etaDisplay, progressTrack.nextSibling);
+    }
 }
 
 function logMessage(text, type = "info") {
@@ -142,6 +161,8 @@ function setProgress(percent) {
 function showProgress() {
     progressTrack.classList.add("active");
     progressTrack.style.opacity = "1";
+    const etaDisplay = document.getElementById('etaDisplay');
+    if (etaDisplay) etaDisplay.textContent = '⏱️ Calculating...';
 }
 
 function hideProgress() {
@@ -153,6 +174,43 @@ function hideProgress() {
         }, PROGRESS_FADE_DURATION_MS);
     }, PROGRESS_HIDE_DELAY_MS);
 }
+
+// ===== ETA UPDATE FUNCTION =====
+function updateETA() {
+    const etaDisplay = document.getElementById('etaDisplay');
+    if (!etaDisplay) return;
+    
+    if (etaTotal === 0 || etaProcessed === 0) {
+        etaDisplay.textContent = '⏱️ Estimating...';
+        return;
+    }
+    
+    const elapsed = (Date.now() - etaStartTime) / 1000;
+    if (elapsed < 1) {
+        etaDisplay.textContent = '⏱️ Calculating...';
+        return;
+    }
+    
+    const avgTimePerChunk = elapsed / etaProcessed;
+    const remaining = etaTotal - etaProcessed;
+    const etaSeconds = Math.round(avgTimePerChunk * remaining);
+    
+    // Hiển thị cả tiến độ file
+    const fileInfo = etaTotalFiles > 1 ? ` (File ${etaCurrentFile}/${etaTotalFiles})` : '';
+    
+    if (etaSeconds < 60) {
+        etaDisplay.textContent = `⏱️ ${etaSeconds} sec remaining${fileInfo}`;
+    } else {
+        const mins = Math.floor(etaSeconds / 60);
+        const secs = etaSeconds % 60;
+        if (secs === 0) {
+            etaDisplay.textContent = `⏱️ ${mins} min remaining${fileInfo}`;
+        } else {
+            etaDisplay.textContent = `⏱️ ${mins} min ${secs} sec remaining${fileInfo}`;
+        }
+    }
+}
+// ===========================
 
 function isSupportedFile(file) {
     const lowerName = file.name.toLowerCase();
@@ -1121,12 +1179,22 @@ patchBtn.addEventListener("click", async () => {
 
     isCancelled = false;
     let successCount = 0;
+    const totalItems = pendingItems.length;
+    etaTotalFiles = totalItems;
 
     for (let i = 0; i < pendingItems.length; i++) {
         if (isCancelled) {
             break;
         }
         const item = pendingItems[i];
+        etaCurrentFile = i + 1;
+        
+        // Reset ETA cho từng file
+        etaStartTime = Date.now();
+        etaProcessed = 0;
+        etaTotal = 1; // Mỗi file là 1 chunk (hoặc có thể tính số chunk nếu chia nhỏ)
+        updateETA();
+        
         setProgress(Math.round((i / pendingItems.length) * 100));
 
         item.status = "processing";
@@ -1145,6 +1213,11 @@ patchBtn.addEventListener("click", async () => {
             item.mimeType = result.mimeType;
             item.checked = true;
             successCount++;
+
+            // ===== ETA UPDATE =====
+            etaProcessed = 1;
+            updateETA();
+            // =====================
 
             // ===== TỰ ĐỘNG TẢI XUỐNG =====
             if (result.finalBuffer) {
@@ -1243,6 +1316,12 @@ patchBtn.addEventListener("click", async () => {
         }
 
         renderFileList();
+        
+        // Cập nhật ETA sau mỗi file
+        const etaDisplay = document.getElementById('etaDisplay');
+        if (etaDisplay && i < pendingItems.length - 1) {
+            etaDisplay.textContent = `⏱️ ${pendingItems.length - i - 1} files remaining...`;
+        }
     }
 
     if (isCancelled) {
@@ -1276,6 +1355,9 @@ patchBtn.addEventListener("click", async () => {
         successCount === pendingItems.length ? "success" : "warning",
     );
     hideProgress();
+
+    const etaDisplay = document.getElementById('etaDisplay');
+    if (etaDisplay) etaDisplay.textContent = '✅ Done!';
 
     clearBtn.innerText = "Clear";
     clearBtn.disabled = false;
