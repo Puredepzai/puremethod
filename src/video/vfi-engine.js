@@ -2,10 +2,10 @@ import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
-// ===== CẤU HÌNH CHỐNG CRASH =====
-const MAX_MEMORY_MB = 2048;
-const CHUNK_DURATION = 3; // 3 giây mỗi chunk
-const MIN_CHUNK_SIZE_MB = 30; // Chỉ chunk khi file > 30MB
+// ===== CẤU HÌNH RAM KHỦNG =====
+const MAX_MEMORY_MB = 10240; // 10GB
+const CHUNK_DURATION = 3;
+const MIN_CHUNK_SIZE_MB = 30;
 
 export async function runVFI(file, width, height, targetRes, applyHDR, isCancelled, logMessage, setProgress, enableTurbo = false, targetFPS = 120) {
     let instance;
@@ -18,16 +18,20 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         instance = await getFFmpeg(logMessage, setProgress);
         if (isCancelled?.()) throw new Error("Cancelled");
 
+        // ===== 🔥 NÂNG CẤP RAM LÊN 10GB 🔥 =====
         try {
             await instance.setMemoryLimit(MAX_MEMORY_MB * 1024 * 1024);
-        } catch (_) {}
+            if (logMessage) logMessage(`🧠 Memory limit set to ${MAX_MEMORY_MB}MB (10GB)`, "info");
+        } catch (_) {
+            if (logMessage) logMessage(`⚠️ setMemoryLimit failed, using default`, "warning");
+        }
 
         if (logMessage) logMessage("Preparing video data streams...", "info");
         const fileData = await fetchFile(file);
         await instance.writeFile(inputName, fileData);
         if (isCancelled?.()) throw new Error("Cancelled");
 
-        // ===== CẤU HÌNH =====
+        // ===== CẤU HÌNH TURBO =====
         const preset = enableTurbo ? "veryfast" : "fast";
         const crf = enableTurbo ? 22 : 18;
         const searchParam = enableTurbo ? 2 : 4;
@@ -35,7 +39,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
 
         if (logMessage) logMessage(`⚙️ Mode: ${enableTurbo ? "TURBO" : "QUALITY"} | FPS: ${targetFPS}`, "info");
 
-        // ===== FILTER (ĐƠN GIẢN HƠN, BỎ MP=EPZS) =====
+        // ===== FILTER =====
         let filter;
         if (applyHDR) {
             filter =
@@ -58,12 +62,11 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         const fileSizeMB = file.size / (1024 * 1024);
         const useChunk = fileSizeMB > MIN_CHUNK_SIZE_MB;
 
-        // ===== XỬ LÝ CHUNK =====
+        // ===== CHUNK PROCESSING =====
         if (useChunk) {
-            if (logMessage) logMessage(`📦 File ${Math.round(fileSizeMB)}MB, using chunk processing (${CHUNK_DURATION}s chunks)...`, "info");
+            if (logMessage) logMessage(`📦 File ${Math.round(fileSizeMB)}MB, using chunk processing...`, "info");
             
-            // Ước tính số chunk
-            const totalDuration = 30; // Giả định 30s, có thể lấy từ metadata nếu có
+            const totalDuration = 30;
             const numChunks = Math.ceil(totalDuration / CHUNK_DURATION);
             let chunkFiles = [];
             let totalProgress = 0;
@@ -75,10 +78,8 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 const chunkInput = `chunk_${i}${ext}`;
                 const chunkOutput = `chunk_out_${i}.mp4`;
                 
-                // Cắt chunk
                 await instance.exec(["-i", inputName, "-ss", String(start), "-t", String(CHUNK_DURATION), "-c", "copy", chunkInput]);
                 
-                // Xử lý chunk với filter đơn giản hơn
                 const chunkFilter = applyHDR ? 
                     `minterpolate=fps=${targetFPS}:mi_mode=mci:me_mode=bilat:search_param=2,eq=brightness=0.15:contrast=1.20,zscale=transfer=linear,zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc,format=yuv420p10le` :
                     `minterpolate=fps=${targetFPS}:mi_mode=mci:me_mode=bilat:search_param=2`;
@@ -109,7 +110,6 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 if (window.gc) try { window.gc(); } catch (_) {}
             }
             
-            // Ghép chunk
             if (logMessage) logMessage("🔗 Merging chunks...", "info");
             const concatList = chunkFiles.map(f => `file '${f}'`).join('\n');
             await instance.writeFile("concat.txt", concatList);
@@ -121,7 +121,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             await instance.deleteFile("concat.txt").catch(() => {});
             
         } else {
-            // ===== XỬ LÝ BÌNH THƯỜNG (ĐƠN GIẢN HƠN) =====
+            // ===== XỬ LÝ BÌNH THƯỜNG =====
             const args = applyHDR ? [
                 "-i", inputName,
                 "-vf", filter,
