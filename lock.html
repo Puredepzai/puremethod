@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PureMethod — Access Key</title>
   <style>
     * {
@@ -46,7 +46,6 @@
       margin-bottom: 8px;
       color: #ffffff;
     }
-
     .lock-title span {
       color: #aaaaaa;
     }
@@ -71,11 +70,9 @@
       transition: border-color 0.2s ease;
       box-sizing: border-box;
     }
-
     .lock-input:focus {
       border-color: #ffffff;
     }
-
     .lock-input::placeholder {
       color: #555555;
     }
@@ -94,13 +91,11 @@
       cursor: pointer;
       transition: all 0.15s ease;
     }
-
     .lock-btn:hover {
       background: #000000;
       color: #ffffff;
       border-color: #ffffff;
     }
-
     .lock-btn:active {
       transform: scale(0.97);
     }
@@ -120,13 +115,11 @@
       border-top: 1px solid #222222;
       padding-top: 20px;
     }
-
     .lock-footer a {
       color: #666666;
       text-decoration: none;
       transition: color 0.2s;
     }
-
     .lock-footer a:hover {
       color: #ffffff;
     }
@@ -147,7 +140,7 @@
     <h1 class="lock-title">Pure<span>Method</span></h1>
     <p class="lock-sub">Enter your access key</p>
 
-    <input class="lock-input" id="keyInput" type="password" placeholder="Enter key..." autofocus>
+    <input class="lock-input" id="keyInput" type="password" placeholder="Enter key..." autofocus />
     <button class="lock-btn" id="unlockBtn">Unlock</button>
     <div class="lock-error" id="lockError"></div>
 
@@ -157,12 +150,10 @@
   </div>
 
   <script>
-    // ===== KEY HỢP LỆ (đổi ở đây) =====
     const VALID_KEY = "abc123";
 
-    // ===== FINGERPRINT =====
     function getDeviceFingerprint() {
-      const components = [
+      const c = [
         navigator.userAgent,
         screen.width,
         screen.height,
@@ -170,46 +161,36 @@
         navigator.language,
         new Date().getTimezoneOffset()
       ];
-      return btoa(encodeURIComponent(components.join('|||')));
+      return btoa(encodeURIComponent(c.join('|||')));
     }
 
     const deviceId = getDeviceFingerprint();
-
-    // ===== KIỂM TRA ĐÃ KÍCH HOẠT CHƯA =====
     const savedKey = localStorage.getItem('puremethod_key');
     const savedDevice = localStorage.getItem('puremethod_device');
     const isActivated = localStorage.getItem('puremethod_activated') === 'true';
 
-    // Nếu đã kích hoạt và đúng device -> vào web
     if (isActivated && savedKey === VALID_KEY && savedDevice === deviceId) {
       window.location.href = 'index.html';
     }
 
-    // ===== XỬ LÝ UNLOCK =====
     const input = document.getElementById('keyInput');
     const btn = document.getElementById('unlockBtn');
     const error = document.getElementById('lockError');
 
     function tryUnlock() {
       const key = input.value.trim();
-
-      // Sai key
       if (key !== VALID_KEY) {
         error.textContent = '❌ Invalid key.';
         input.value = '';
         input.focus();
         return;
       }
-
-      // Key đã được sử dụng (bất kể device nào)
       if (isActivated) {
         error.textContent = '❌ This key has already been used.';
         input.value = '';
         input.focus();
         return;
       }
-
-      // Lần đầu kích hoạt -> lưu key + device + đánh dấu đã dùng
       localStorage.setItem('puremethod_key', key);
       localStorage.setItem('puremethod_device', deviceId);
       localStorage.setItem('puremethod_activated', 'true');
