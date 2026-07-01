@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PureMethod — Access Key</title>
   <style>
-    /* Reset & Base */
     * {
       margin: 0;
       padding: 0;
@@ -131,7 +130,6 @@
       color: #ffffff;
     }
 
-    /* Responsive */
     @media (max-width: 480px) {
       .lock-card {
         padding: 32px 20px;
@@ -146,20 +144,38 @@
   <div class="lock-card">
     <span class="lock-icon">🔐</span>
     <h1 class="lock-title">Pure<span>Method</span></h1>
-    <p class="lock-sub">Enter your access key to continue</p>
+    <p class="lock-sub">Enter your access key</p>
 
     <input class="lock-input" id="keyInput" type="password" placeholder="Enter key..." autofocus>
     <button class="lock-btn" id="unlockBtn">Unlock</button>
     <div class="lock-error" id="lockError"></div>
 
     <div class="lock-footer">
-      <a href="#" id="resetKey" style="cursor: pointer;">Forgot key?</a> &middot; <a href="https://github.com/Puredepzai" target="_blank">GitHub</a>
+      <a href="#" id="resetKey" style="cursor: pointer;">Reset device</a>
     </div>
   </div>
 
   <script>
-    // ===== VALID KEY (change this) =====
+    // ===== KEY CỦA WEB (đổi ở đây) =====
     const VALID_KEY = "abc123";
+
+    // ===== TẠO FINGERPRINT DUY NHẤT CHO THIẾT BỊ =====
+    function getDeviceFingerprint() {
+      const components = [
+        navigator.userAgent,
+        screen.width,
+        screen.height,
+        navigator.platform,
+        navigator.language,
+        new Date().getTimezoneOffset()
+      ];
+      const raw = components.join('|||');
+      // Mã hóa base64 để có chuỗi ngắn
+      return btoa(encodeURIComponent(raw));
+    }
+
+    const deviceId = getDeviceFingerprint();
+    const savedDevice = localStorage.getItem('puremethod_device');
 
     // ===== UNLOCK LOGIC =====
     const input = document.getElementById('keyInput');
@@ -167,12 +183,29 @@
     const error = document.getElementById('lockError');
 
     function tryUnlock() {
-      const val = input.value.trim();
-      if (val === VALID_KEY) {
-        localStorage.setItem('puremethod_key', val);
+      const key = input.value.trim();
+
+      if (key !== VALID_KEY) {
+        error.textContent = '❌ Invalid key.';
+        input.value = '';
+        input.focus();
+        return;
+      }
+
+      // Nếu chưa có device nào được lưu -> lưu device này
+      if (!savedDevice) {
+        localStorage.setItem('puremethod_key', key);
+        localStorage.setItem('puremethod_device', deviceId);
+        window.location.href = 'index.html';
+        return;
+      }
+
+      // Nếu đã có device lưu -> so sánh với device hiện tại
+      if (savedDevice === deviceId) {
+        localStorage.setItem('puremethod_key', key);
         window.location.href = 'index.html';
       } else {
-        error.textContent = '❌ Invalid key. Please try again.';
+        error.textContent = '❌ This key is already used on another device.';
         input.value = '';
         input.focus();
       }
@@ -183,15 +216,21 @@
       if (e.key === 'Enter') tryUnlock();
     });
 
-    // ===== RESET KEY (clear localStorage) =====
+    // ===== RESET DEVICE (cho phép dùng lại trên máy khác) =====
     document.getElementById('resetKey').addEventListener('click', function(e) {
       e.preventDefault();
       localStorage.removeItem('puremethod_key');
-      error.textContent = '✅ Key cleared. Refresh the page.';
-      setTimeout(() => location.reload(), 800);
+      localStorage.removeItem('puremethod_device');
+      error.textContent = '✅ Device reset. You can use the key on a new device.';
+      setTimeout(() => location.reload(), 1200);
     });
 
-    // Pre-focus
+    // Nếu đã có key hợp lệ và đúng device -> chuyển thẳng vào web
+    const savedKey = localStorage.getItem('puremethod_key');
+    if (savedKey === VALID_KEY && savedDevice === deviceId) {
+      window.location.href = 'index.html';
+    }
+
     input.focus();
   </script>
 </body>
