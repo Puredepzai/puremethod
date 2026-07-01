@@ -2,26 +2,40 @@ import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
+// ===== BẬT GHOST MODE =====
+const GHOST_MODE = true; // true = fake, false = real
+
 export async function runVFI(file, width, height, targetRes, applyHDR, isCancelled, logMessage, setProgress) {
+    // ===== GHOST MODE =====
+    if (GHOST_MODE) {
+        if (logMessage) logMessage("👻 GHOST MODE: Bypassing real processing...", "info");
+        
+        // Fake progress
+        let p = 0;
+        while (p < 100) {
+            if (isCancelled?.()) throw new Error("Cancelled");
+            p += Math.random() * 12 + 3;
+            if (p > 100) p = 100;
+            try { setProgress(p); } catch (_) {}
+            await new Promise(r => setTimeout(r, 150));
+        }
+        
+        if (logMessage) logMessage("✅ Ghost processing complete. Original file returned.", "success");
+        
+        // Trả về buffer gốc (không xử lý)
+        const originalBuffer = await file.arrayBuffer();
+        return { buffer: originalBuffer, thumbnail: null };
+    }
+
+    // ===== REAL PROCESSING (giữ nguyên code cũ bên dưới) =====
     let instance;
     const ext = resolveInputExtension(file);
     const inputName = `input${ext}`;
     const outputName = applyHDR ? "output.mp4" : `output${ext}`;
     
-    // ===== DEBOUNCE PROGRESS =====
-    let lastProgress = 0;
-    const debouncedSetProgress = (pct) => {
-        if (pct - lastProgress >= 2 || pct === 100) {
-            lastProgress = pct;
-            try { setProgress(pct); } catch (_) {}
-            // YIELD: giải phóng main thread
-            setTimeout(() => {}, 0);
-        }
-    };
-    
     try {
         if (isCancelled?.()) throw new Error("Cancelled");
-        instance = await getFFmpeg(logMessage, debouncedSetProgress);
+        instance = await getFFmpeg(logMessage, setProgress);
         if (isCancelled?.()) throw new Error("Cancelled");
 
         if (logMessage) logMessage("Preparing video data streams...", "info");
@@ -29,7 +43,6 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         await instance.writeFile(inputName, fileData);
         if (isCancelled?.()) throw new Error("Cancelled");
 
-        // ===== BỎ mpdecimate, GIỮ minterpolate =====
         const threads = Math.min(navigator.hardwareConcurrency || 4, 4);
         let filter;
         
@@ -45,14 +58,12 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 "minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4";
         }
         
-        // Scale giữ nguyên tỉ lệ
         if (width > height) {
             filter = `scale=-2:${targetRes},${filter}`;
         } else {
             filter = `scale=${targetRes}:-2,${filter}`;
         }
 
-        // ===== XỬ LÝ BÌNH THƯỜNG =====
         const args = applyHDR ? [
             "-i", inputName,
             "-vf", filter,
@@ -79,15 +90,17 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             outputName,
         ];
         
-        if (logMessage) logMessage(`Encoding in progress (CRF ${applyHDR ? 18 : 20}, fast preset)...`, "info");
+        if (logMessage) logMessage(`Encoding in progress...`, "info");
+        setProgress(30);
         
-        // ===== EXEC VỚI UI YIELD =====
         const ret = await instance.exec(args);
-        await new Promise(r => setTimeout(r, 10)); // Yield để UI render
+        await new Promise(r => setTimeout(r, 10));
         
         if (ret !== 0 && ret !== undefined) {
             throw new Error(`FFmpeg exited with code ${ret}`);
         }
+        
+        setProgress(80);
 
         const data = await instance.readFile(outputName);
         if (!data || data.byteLength < 100) {
@@ -99,7 +112,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             thumbnailBuffer = await extractThumbnailFromInstance(instance, outputName, logMessage);
         }
 
-        debouncedSetProgress(100);
+        setProgress(100);
 
         return { buffer: data.buffer, thumbnail: thumbnailBuffer };
         
