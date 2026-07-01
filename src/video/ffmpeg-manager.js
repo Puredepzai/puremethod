@@ -4,8 +4,9 @@ import { toBlobURL } from "@ffmpeg/util";
 let ffmpegInstance = null;
 
 // ===== CẤU HÌNH GIỚI HẠN TÀI NGUYÊN =====
-const MEMORY_LIMIT_MB = 512; // Giới hạn RAM tối đa 512MB
-const THREAD_COUNT = 2;       // Giới hạn số luồng xử lý
+// Tăng lên 2GB để xử lý video nặng hơn, nhưng vẫn giữ thread thấp
+const MEMORY_LIMIT_MB = 2048; // 2GB RAM
+const THREAD_COUNT = 2;        // 2 luồng để cân bằng
 // ========================================
 
 export async function destroyFFmpegInstance() {
@@ -14,6 +15,9 @@ export async function destroyFFmpegInstance() {
     ffmpegInstance = null;
     try {
         await tempInstance.terminate();
+        if (window.gc) {
+            try { window.gc(); } catch (_) {}
+        }
     } catch (err) {
         console.error("FFmpeg terminate failed:", err);
     }
@@ -23,7 +27,7 @@ export async function getFFmpeg(logMessage, setProgress) {
     if (ffmpegInstance) return ffmpegInstance;
 
     ffmpegInstance = new FFmpeg();
-    logMessage("Loading video processing engine...", "info");
+    if (logMessage) logMessage("Loading video processing engine...", "info");
     
     const isMultiThread =
         typeof window.SharedArrayBuffer !== "undefined" &&
@@ -32,13 +36,13 @@ export async function getFFmpeg(logMessage, setProgress) {
         ? "https://cdn.jsdelivr.net/npm/@ffmpeg/core-mt@0.12.6/dist/esm"
         : "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm";
     
-    // ===== GIỚI HẠN PROGRESS =====
     let lastProgress = 0;
     ffmpegInstance.on("progress", ({ progress }) => {
+        if (!setProgress) return;
         const pct = Math.round(progress * 100);
         if (pct !== lastProgress) {
             lastProgress = pct;
-            setProgress(Math.min(pct, 100));
+            try { setProgress(Math.min(pct, 100)); } catch (_) {}
         }
     });
 
@@ -56,25 +60,22 @@ export async function getFFmpeg(logMessage, setProgress) {
         }
         await ffmpegInstance.load(loadConfig);
         
-        // ===== ÁP DỤNG GIỚI HẠN TÀI NGUYÊN =====
+        // ===== TĂNG GIỚI HẠN BỘ NHỚ =====
         try {
-            // Giới hạn bộ nhớ (nếu FFmpeg hỗ trợ)
             await ffmpegInstance.setMemoryLimit(MEMORY_LIMIT_MB * 1024 * 1024);
-            logMessage(`Memory limit set to ${MEMORY_LIMIT_MB}MB`, "info");
+            if (logMessage) logMessage(`Memory limit set to ${MEMORY_LIMIT_MB}MB`, "info");
         } catch (_) {
-            // Nếu không hỗ trợ, bỏ qua
+            if (logMessage) logMessage("Memory limit not supported", "warning");
         }
         
         try {
-            // Giới hạn số luồng
             await ffmpegInstance.setThreadCount(THREAD_COUNT);
-            logMessage(`Thread count set to ${THREAD_COUNT}`, "info");
+            if (logMessage) logMessage(`Thread count set to ${THREAD_COUNT}`, "info");
         } catch (_) {
-            // Nếu không hỗ trợ, bỏ qua
+            if (logMessage) logMessage("Thread count not supported", "warning");
         }
-        // ========================================
         
-        logMessage("Video processing engine loaded successfully.", "success");
+        if (logMessage) logMessage("Video processing engine loaded successfully.", "success");
     } catch (err) {
         await destroyFFmpegInstance();
         throw err;
@@ -89,13 +90,10 @@ export function resolveInputExtension(file) {
     return ".mp4";
 }
 
-// ===== HÀM HỖ TRỢ THÊM THAM SỐ GIỚI HẠN CHO FFMPEG =====
 export function getLimitedFFmpegArgs(extraArgs = []) {
-    // Thêm các tham số giới hạn tài nguyên vào lệnh FFmpeg
     const limitArgs = [
         '-threads', String(THREAD_COUNT),
         '-memory_limit', String(MEMORY_LIMIT_MB * 1024 * 1024),
     ];
     return [...limitArgs, ...extraArgs];
 }
-// ======================================================
