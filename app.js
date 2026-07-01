@@ -205,7 +205,6 @@ function captureVideoFrame(file) {
             resolve(result);
         }
 
-        // Set event handlers BEFORE assigning src to prevent race condition
         video.onloadeddata = () => {
             if (settled) return;
             video.currentTime = 0.1;
@@ -243,7 +242,6 @@ function captureVideoFrame(file) {
             cleanup(null);
         };
 
-        // Assign src AFTER handlers are set
         objectUrl = URL.createObjectURL(file);
         const timeoutId = setTimeout(() => {
             cleanup(null);
@@ -933,7 +931,6 @@ async function patchSingleFile(item) {
 
     if (isCancelled) throw new Error("Cancelled");
 
-    // Destroy FFmpeg instance before container parsing to free memory
     await destroyFFmpegInstance();
 
     let videoInfo = null;
@@ -963,14 +960,11 @@ async function patchSingleFile(item) {
         inputView = new DataView(inputBytes.buffer);
         if (videoInfo) {
             logMessage(
-                `  Source: ${videoInfo.width}x${videoInfo.height} (${videoInfo.width > videoInfo.height ? "landscape" : "portrait"})`,
+                `  Source: ${videoInfo.width}x${videoInfo.height}`,
                 "info",
             );
         } else {
-            logMessage(
-                "  Source: MOV file (dimensions from container)",
-                "info",
-            );
+            logMessage("  Source: MOV file", "info");
         }
     }
 
@@ -1047,7 +1041,7 @@ clearBtn.addEventListener("click", async (event) => {
     event.stopPropagation();
     if (currentFlowState === "patching") {
         isCancelled = true;
-        logMessage("Cancelling active interpolation progress...", "warning");
+        logMessage("Cancelling...", "warning");
         await destroyFFmpegInstance();
         return;
     }
@@ -1152,10 +1146,22 @@ patchBtn.addEventListener("click", async () => {
             item.checked = true;
             successCount++;
 
-            if (
-                result.finalBuffer &&
-                result.finalBuffer.byteLength !== undefined
-            ) {
+            // ===== TỰ ĐỘNG TẢI XUỐNG =====
+            if (result.finalBuffer) {
+                const blob = new Blob([result.finalBuffer], { type: result.mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = result.outputName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                logMessage(`  ✅ Auto-download: ${result.outputName}`, "success");
+            }
+            // ===== KẾT THÚC =====
+
+            if (result.finalBuffer && result.finalBuffer.byteLength !== undefined) {
                 try {
                     if (isCancelled) break;
                     const blob = new Blob([result.finalBuffer], {
@@ -1172,39 +1178,30 @@ patchBtn.addEventListener("click", async () => {
                             binary += String.fromCharCode(thumbBytes[j]);
                         }
                         thumbnail = `data:image/jpeg;base64,${btoa(binary)}`;
-                        logMessage(
-                            "Thumbnail captured from MOV extraction",
-                            "info",
-                        );
+                        logMessage("Thumbnail from MOV", "info");
                     }
                     if (!thumbnail) {
                         try {
                             if (!enableInterpolation?.checked && !enableHDR?.checked) {
                                 thumbnail = await captureVideoFrame(blob);
                                 if (thumbnail) {
-                                    logMessage("Thumbnail captured from output", "info");
+                                    logMessage("Thumbnail captured", "info");
                                 }
                             } else {
-                                logMessage("Skipping thumbnail capture (HEVC unsupported in browser)", "info");
+                                logMessage("Skipping thumbnail (HEVC unsupported)", "info");
                             }
                         } catch (_) {}
                     }
                     if (!thumbnail && !isMovFile(item.file)) {
                         thumbnail = await captureVideoFrame(item.file);
                         if (thumbnail) {
-                            logMessage(
-                                "Thumbnail captured from original file",
-                                "info",
-                            );
+                            logMessage("Thumbnail from original file", "info");
                         }
                     }
                     if (isCancelled) break;
 
                     if (!thumbnail) {
-                        logMessage(
-                            "Warning: No thumbnail available for history entry",
-                            "warning",
-                        );
+                        logMessage("No thumbnail available", "warning");
                     }
                     await saveRecord({
                         id: self.crypto.randomUUID(),
@@ -1217,10 +1214,7 @@ patchBtn.addEventListener("click", async () => {
                     });
                     await renderHistoryList();
                 } catch (dbError) {
-                    logMessage(
-                        `  Database save skipped: ${dbError.message}`,
-                        "warning",
-                    );
+                    logMessage(`Database save skipped: ${dbError.message}`, "warning");
                 }
             }
 
@@ -1241,7 +1235,6 @@ patchBtn.addEventListener("click", async () => {
             item.status = "error";
             item.checked = false;
             const msg = String(error.message || error);
-            // ponytail: OOM or cascading WASM crash
             if (msg.includes("OOM") || msg.includes("startsWith") || msg.includes("Aborted")) {
                 logMessage("  Error: Out of memory. Try a lower resolution or a shorter video.", "error");
             } else {
@@ -1263,7 +1256,7 @@ patchBtn.addEventListener("click", async () => {
         hideProgress();
         releaseWakeLock();
         clearBtn.innerText = "Clear";
-        logMessage("Interpolation progress cancelled by user.", "warning");
+        logMessage("Cancelled by user.", "warning");
         renderFileList();
         updatePatchButton();
         refreshIcons();
