@@ -1420,12 +1420,14 @@ if (enableInterpolation && vfiModal) {
             lockScroll();
         }
         updateResolutionVisibility();
+        updatePatchButton();
     });
 
     const closeModal = () => {
         vfiModal.classList.remove("active");
         unlockScroll();
         updateResolutionVisibility();
+        updatePatchButton();
     };
 
     const cancelModal = () => {
@@ -1455,12 +1457,14 @@ if (enableHDR && hdrModal) {
             lockScroll();
         }
         updateResolutionVisibility();
+        updatePatchButton();
     });
 
     const closeHdrModal = () => {
         hdrModal.classList.remove("active");
         unlockScroll();
         updateResolutionVisibility();
+        updatePatchButton();
     };
 
     const cancelHdrModal = () => {
@@ -1475,6 +1479,8 @@ if (enableHDR && hdrModal) {
         if (e.target === hdrModal) cancelHdrModal();
     });
 }
+
+outputResolution.addEventListener("change", updatePatchButton);
 
 const tiktokModal = document.getElementById("tiktokModal");
 const tiktokStudioBtn = document.getElementById("tiktokStudioBtn");
