@@ -3,9 +3,10 @@ import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpe
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
 // ===== CẤU HÌNH =====
-const MAX_THREADS = 4;
+const MAX_THREADS = 2;
 const CRF_VALUE = 18;
 const PRESET = "slow";
+const CHUNK_DURATION = 5;
 // ====================
 
 export async function runVFI(file, width, height, targetRes, applyHDR, isCancelled, logMessage, setProgress) {
@@ -25,13 +26,13 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         if (isCancelled?.()) throw new Error("Cancelled");
 
         const threads = MAX_THREADS;
-        logMessage(`Using ${threads} thread(s) for processing`, "info");
+        logMessage(`Using ${threads} thread(s) for chunk processing`, "info");
         
-        // ==== THỬ FILTER ĐƠN GIẢN (BỎ MINTERPOLATE) =====
-        // Filter này chỉ scale và thay đổi brightness, không interpolate
+        // ===== FILTER 600FPS =====
         let filter;
         if (applyHDR) {
             filter =
+                "minterpolate=fps=600:mi_mode=mci:me_mode=bidir:me=epzs:search_param=4," +
                 "eq=brightness=0.20:contrast=1.25," +
                 "zscale=transfer=linear," +
                 "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
@@ -42,78 +43,90 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 filter = `scale=${targetRes}:-2,${filter}`;
             }
         } else {
-            // Chỉ scale, không interpolate
+            filter =
+                "minterpolate=fps=600:mi_mode=mci:me_mode=bidir:me=epzs:search_param=4";
             if (width > height) {
-                filter = `scale=-2:${targetRes}`;
+                filter = `scale=-2:${targetRes},${filter}`;
             } else {
-                filter = `scale=${targetRes}:-2`;
+                filter = `scale=${targetRes}:-2,${filter}`;
             }
         }
 
-        // ==== ARGS ====
-        let args;
-        if (applyHDR) {
-            logMessage("Converting to HDR10 (HEVC 10-bit)... (NO interpolation)", "info");
-            args = [
+        // ===== CHUNK PROCESSING =====
+        const fileSizeMB = file.size / (1024 * 1024);
+        const numChunks = fileSizeMB > 200 ? 6 : (fileSizeMB > 100 ? 4 : 1);
+        const chunkDuration = Math.max(3, Math.floor(60 / numChunks));
+        
+        logMessage(`File size: ${Math.round(fileSizeMB)}MB, splitting into ${numChunks} chunks`, "info");
+        
+        let chunkFiles = [];
+        
+        for (let i = 0; i < numChunks; i++) {
+            if (isCancelled?.()) throw new Error("Cancelled");
+            
+            const start = i * chunkDuration;
+            const chunkInput = `chunk_${i}${ext}`;
+            const chunkOutput = `chunk_out_${i}.mp4`;
+            
+            // Cắt chunk
+            const cutArgs = [
                 "-i", inputName,
+                "-ss", String(start),
+                "-t", String(chunkDuration),
+                "-c", "copy",
+                chunkInput
+            ];
+            await instance.exec(cutArgs);
+            
+            // Xử lý chunk với 600FPS
+            const processArgs = [
+                "-i", chunkInput,
                 "-vf", filter,
-                "-c:v", "libx265",
+                "-c:v", applyHDR ? "libx265" : "libx264",
                 "-preset", PRESET,
                 "-crf", String(CRF_VALUE),
-                "-maxrate", "30M",
-                "-bufsize", "60M",
-                "-pix_fmt", "yuv420p10le",
-                "-x265-params", "hdr10=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,50):max-cll=1000,400",
                 "-c:a", "copy",
-                "-video_track_timescale", "90000",
                 "-threads", String(threads),
                 "-max_muxing_queue_size", "2048",
-                outputName,
+                chunkOutput
             ];
-        } else {
-            logMessage("Scaling video (NO interpolation)...", "info");
-            args = [
-                "-i", inputName,
-                "-vf", filter,
-                "-c:v", "libx264",
-                "-preset", PRESET,
-                "-crf", String(CRF_VALUE),
-                "-c:a", "copy",
-                "-video_track_timescale", "90000",
-                "-threads", String(threads),
-                "-max_muxing_queue_size", "2048",
-                outputName,
-            ];
+            
+            let ret = await instance.exec(processArgs);
+            if (ret !== 0 && ret !== undefined) {
+                throw new Error(`Chunk ${i} failed with code ${ret}`);
+            }
+            
+            chunkFiles.push(chunkOutput);
+            logMessage(`Chunk ${i+1}/${numChunks} processed (600FPS)`, "info");
+            
+            await instance.deleteFile(chunkInput).catch(() => {});
         }
+        
+        // Ghép các chunk
+        if (chunkFiles.length > 1) {
+            logMessage("Merging chunks...", "info");
+            const concatList = chunkFiles.map(f => `file '${f}'`).join('\n');
+            await instance.writeFile("concat.txt", concatList);
+            
+            const mergeArgs = [
+                "-f", "concat",
+                "-safe", "0",
+                "-i", "concat.txt",
+                "-c", "copy",
+                outputName
+            ];
+            await instance.exec(mergeArgs);
+        } else if (chunkFiles.length === 1) {
+            await instance.exec(["-i", chunkFiles[0], "-c", "copy", outputName]);
+        }
+        
+        // Dọn dẹp
+        for (const f of chunkFiles) {
+            await instance.deleteFile(f).catch(() => {});
+        }
+        await instance.deleteFile("concat.txt").catch(() => {});
 
-        logMessage("Encoding in progress (no interpolation)...", "info");
-        
-        let ret;
-        try {
-            ret = await instance.exec(args);
-        } catch (execError) {
-            logMessage(`FFmpeg exec error: ${execError.message}`, "error");
-            try {
-                const logData = await instance.readFile("ffmpeg.log").catch(() => null);
-                if (logData) {
-                    const logText = new TextDecoder().decode(logData);
-                    logMessage(`FFmpeg log: ${logText.substring(0, 500)}`, "error");
-                }
-            } catch (_) {}
-            throw new Error(`FFmpeg exec failed: ${execError.message}`);
-        }
-        
-        if (ret !== 0 && ret !== undefined) {
-            try {
-                const logData = await instance.readFile("ffmpeg.log").catch(() => null);
-                if (logData) {
-                    const logText = new TextDecoder().decode(logData);
-                    logMessage(`FFmpeg log: ${logText.substring(0, 500)}`, "error");
-                }
-            } catch (_) {}
-            throw new Error(`FFmpeg exited with code ${ret}`);
-        }
-        logMessage("Encoding complete.", "success");
+        logMessage("600FPS encoding complete.", "success");
 
         const data = await instance.readFile(outputName);
         if (!data || data.byteLength < 100) {
