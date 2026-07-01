@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PureMethod — Bypass TikTok Compression</title>
-  <meta name="description" content="PureMethod - Bypass TikTok compression, preserve video quality." />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet" />
+  <title>PureMethod</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
   <script>
     if (!window.crossOriginIsolated) window.SharedArrayBuffer = undefined;
@@ -29,43 +28,41 @@
   </script>
 
   <div class="app">
-    <!-- HEADER -->
-    <header class="header">
+    <!-- TOP BAR -->
+    <header>
       <div class="logo">Pure<span>Method</span></div>
-      <div class="tagline">Bypass TikTok compression · Preserve original quality</div>
+      <div class="sub">Bypass TikTok compression · Preserve original quality</div>
     </header>
 
-    <!-- MAIN -->
-    <main class="main">
+    <!-- MAIN GRID -->
+    <main>
       <!-- LEFT: Settings -->
       <section class="settings">
-        <h2>Settings</h2>
-        <label class="toggle">
+        <div class="section-title">Settings</div>
+        <label>
           <input type="checkbox" id="enableInterpolation" />
           <span>60fps Interpolation</span>
           <small>Inflates frame count to 60fps</small>
         </label>
-        <label class="toggle">
+        <label>
           <input type="checkbox" id="enableHDR" />
           <span>HDR10 Conversion</span>
           <small>SDR → HDR10 (PQ, BT.2020)</small>
         </label>
         <div class="resolution" id="vfiResolutionBox" style="display:none;">
-          <label>Output Resolution</label>
+          <span>Output Resolution</span>
           <select id="outputResolution">
             <option value="1080">1080p</option>
             <option value="1440">2K (1440p)</option>
           </select>
         </div>
-        <div class="note">
-          <span>⚡ Processing speed depends on your device.</span>
-        </div>
+        <div class="note">⚡ Processing speed depends on your device.</div>
       </section>
 
-      <!-- CENTER: Drop Zone -->
+      <!-- CENTER: Drop -->
       <section class="drop">
         <div class="drop-zone" id="dropZone">
-          <div class="icon">📁</div>
+          <div class="icon">⤵</div>
           <div class="text">
             <strong>Drop videos here</strong>
             <span>or click to select · MP4 / MOV</span>
@@ -76,23 +73,21 @@
 
       <!-- RIGHT: Actions -->
       <section class="actions">
-        <button class="btn btn-patch" id="patchBtn" disabled>Patch Videos</button>
-        <button class="btn btn-clear" id="clearBtn">Clear</button>
-        <a class="btn btn-tiktok" href="https://www.tiktok.com/tiktokstudio/upload" target="_blank">Upload to TikTok Studio</a>
-        <div class="progress" id="progressTrack">
-          <div class="bar" id="progressBar"></div>
-        </div>
+        <button class="btn primary" id="patchBtn" disabled>Patch Videos</button>
+        <button class="btn secondary" id="clearBtn">Clear</button>
+        <a class="btn tiktok" href="https://www.tiktok.com/tiktokstudio/upload" target="_blank">Upload to TikTok Studio</a>
+        <div class="progress"><div class="bar" id="progressBar"></div></div>
         <div class="note">Upload patched video via TikTok Studio web to ensure bypass works.</div>
       </section>
     </main>
 
-    <!-- LOG -->
-    <footer class="log">
-      <div class="log-header">System Log</div>
+    <!-- BOTTOM: Log -->
+    <footer>
+      <div class="log-title">System Log</div>
       <div class="log-body" id="statusLog"></div>
     </footer>
 
-    <div class="footer-links">
+    <div class="footer-link">
       <a href="https://www.tiktok.com/@pure.xyz" target="_blank">TikTok</a>
     </div>
   </div>
