@@ -3,8 +3,7 @@ import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpe
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
 // ===== GIỚI HẠN TÀI NGUYÊN =====
-const MAX_THREADS = 2;
-const MEMORY_LIMIT_MB = 512;
+const MAX_THREADS = 2; // Chỉ dùng 2 luồng để tránh crash
 // ===============================
 
 export async function runHDR(file, width, height, targetRes, isCancelled, logMessage, setProgress) {
@@ -40,8 +39,8 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
             "-i", inputName,
             "-vf", filter,
             "-c:v", "libx265",
-            "-preset", "veryfast",
-            "-crf", "22",
+            "-preset", "veryfast", // Thay fast -> veryfast
+            "-crf", "22", // Thay 18 -> 22
             "-maxrate", "20M",
             "-bufsize", "40M",
             "-pix_fmt", "yuv420p10le",
@@ -49,7 +48,6 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
             "-c:a", "copy",
             "-video_track_timescale", "90000",
             "-threads", String(threads),
-            "-memory_limit", String(MEMORY_LIMIT_MB * 1024 * 1024),
             outputName,
         ];
 
