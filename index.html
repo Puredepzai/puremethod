@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PureMethod</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
   <script>
     if (!window.crossOriginIsolated) window.SharedArrayBuffer = undefined;
@@ -27,11 +27,14 @@
     }
   </script>
 
+  <div class="glow-a"></div>
+  <div class="glow-b"></div>
+
   <div class="app">
-    <header>
+    <header class="reveal" style="--d:0">
       <div class="header-row">
         <div class="logo">Pure<span>Method</span></div>
-        <div class="badge">v2</div>
+        <div class="status-pill"><span class="dot"></span>System online</div>
       </div>
       <div class="sub">Bypass TikTok compression · Preserve original quality</div>
     </header>
@@ -39,7 +42,7 @@
     <main>
       <!-- CỘT TRÁI: SETTINGS & ACTIONS -->
       <div class="sidebar">
-        <section class="settings">
+        <section class="settings reveal" style="--d:1">
           <div class="section-title">Settings</div>
 
           <label class="control-item" for="enableInterpolation">
@@ -75,7 +78,7 @@
           <div class="note">⚡ Processing speed depends on your device.</div>
         </section>
 
-        <section class="actions">
+        <section class="actions reveal" style="--d:2">
           <div class="section-title">Run</div>
           <button class="btn primary" id="patchBtn" disabled>Patch Videos</button>
           <button class="btn secondary" id="clearBtn">Clear</button>
@@ -86,9 +89,10 @@
       </div>
 
       <!-- CỘT PHẢI: DROP ZONE -->
-      <div class="content-area">
+      <div class="content-area reveal" style="--d:3">
         <section class="drop">
           <div class="drop-zone" id="dropZone">
+            <div class="scan-line"></div>
             <div class="icon">⤵</div>
             <div class="text">
               <strong>Drop videos here</strong>
@@ -100,12 +104,12 @@
       </div>
     </main>
 
-    <footer>
+    <footer class="reveal" style="--d:4">
       <div class="log-title">System Log</div>
       <div class="log-body" id="statusLog"></div>
     </footer>
 
-    <div class="footer-link">
+    <div class="footer-link reveal" style="--d:5">
       <a href="https://www.tiktok.com/@pure.xyz" target="_blank">TikTok</a>
     </div>
   </div>
