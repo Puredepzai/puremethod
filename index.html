@@ -21,9 +21,7 @@
 </head>
 <body>
   <script>
-    // ===== LOCK CHECK =====
     const VALID_KEY = "Anr34Key";
-
     function getDeviceFingerprint() {
       const c = [
         navigator.userAgent,
@@ -35,28 +33,22 @@
       ];
       return btoa(encodeURIComponent(c.join('|||')));
     }
-
     const deviceId = getDeviceFingerprint();
     const savedKey = localStorage.getItem('puremethod_key');
     const savedDevice = localStorage.getItem('puremethod_device');
     const isActivated = localStorage.getItem('puremethod_activated') === 'true';
-
-    // Nếu chưa có key hợp lệ -> chuyển sang lock.html
     if (!(isActivated && savedKey === VALID_KEY && savedDevice === deviceId)) {
       window.location.href = 'lock.html';
     }
   </script>
 
   <div class="app-shell">
-    <!-- HEADER -->
     <header class="header">
       <div class="header-title">Pure<span>Method</span></div>
       <div class="header-subtitle">Bypass TikTok compression · Preserve original quality</div>
     </header>
 
-    <!-- WORKSPACE -->
     <div class="workspace">
-      <!-- LEFT: Settings -->
       <section class="control-box">
         <div class="interpolator-box">
           <div class="interpolator-header">
@@ -76,6 +68,25 @@
               <span class="label-text">HDR10 Conversion</span>
             </label>
             <div class="setting-desc">SDR → HDR10 (PQ, BT.2020)</div>
+
+            <!-- ===== THÊM TURBO MODE ===== -->
+            <label class="checkbox-container">
+              <input type="checkbox" id="enableTurbo" />
+              <span class="checkmark"></span>
+              <span class="label-text">⚡ Turbo Mode (Fast)</span>
+            </label>
+            <div class="setting-desc">Ultrafast preset, lower quality but 2x faster</div>
+
+            <!-- ===== THÊM DROPDOWN FPS ===== -->
+            <div class="stat-item" style="margin-top: 10px;">
+              <span class="stat-label">🎯 Target FPS</span>
+              <select class="stat-select" id="targetFPS">
+                <option value="60">60 FPS</option>
+                <option value="120" selected>120 FPS</option>
+                <option value="240">240 FPS</option>
+                <option value="600">600 FPS</option>
+              </select>
+            </div>
           </div>
 
           <div class="interpolator-resolution" id="vfiResolutionBox" style="display: none;">
@@ -97,7 +108,6 @@
         </div>
       </section>
 
-      <!-- CENTER: Drop Zone + Queue -->
       <section class="drop-zone" id="dropZone">
         <div class="brutalist-upload-box">
           <i data-lucide="upload"></i>
@@ -117,7 +127,6 @@
       </section>
     </div>
 
-    <!-- ACTIONS -->
     <section class="control-actions">
       <div class="btn-row">
         <button class="btn btn-clear" id="clearBtn">Clear</button>
@@ -133,7 +142,6 @@
       </div>
     </section>
 
-    <!-- HISTORY -->
     <section class="history-container" id="historyContainer">
       <div class="history-header" id="historyHeader" tabindex="0">
         <div class="history-header-left">
@@ -152,7 +160,6 @@
       </div>
     </section>
 
-    <!-- LOG -->
     <section class="panel-log">
       <div class="log-header">
         <span class="log-title">System Log</span>
@@ -160,7 +167,6 @@
       <div class="status-log" id="statusLog"></div>
     </section>
 
-    <!-- FOOTER -->
     <footer class="footer">
       <a href="https://www.tiktok.com/@pure.xyz" target="_blank">TikTok</a>
     </footer>
