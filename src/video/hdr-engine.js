@@ -2,6 +2,11 @@ import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
+// ===== GIỚI HẠN TÀI NGUYÊN =====
+const MAX_THREADS = 2;
+const MEMORY_LIMIT_MB = 512;
+// ===============================
+
 export async function runHDR(file, width, height, targetRes, isCancelled, logMessage, setProgress) {
     let instance;
     const ext = resolveInputExtension(file);
@@ -15,7 +20,8 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
         await instance.writeFile(inputName, await fetchFile(file));
         if (isCancelled()) throw new Error("Cancelled");
 
-        const threads = Math.min(navigator.hardwareConcurrency || 4, 8);
+        const threads = MAX_THREADS;
+        logMessage(`Using ${threads} thread(s) for HDR processing`, "info");
 
         let filter =
             "eq=brightness=0.20:contrast=1.25," +
@@ -34,8 +40,8 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
             "-i", inputName,
             "-vf", filter,
             "-c:v", "libx265",
-            "-preset", "fast",
-            "-crf", "18",
+            "-preset", "veryfast",
+            "-crf", "22",
             "-maxrate", "20M",
             "-bufsize", "40M",
             "-pix_fmt", "yuv420p10le",
@@ -43,6 +49,7 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
             "-c:a", "copy",
             "-video_track_timescale", "90000",
             "-threads", String(threads),
+            "-memory_limit", String(MEMORY_LIMIT_MB * 1024 * 1024),
             outputName,
         ];
 
@@ -58,7 +65,6 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
             throw new Error("FFmpeg produced an empty or invalid output file.");
         }
 
-        // Thumbnail after readFile to avoid double memory spike
         const thumbnailBuffer = await extractThumbnailFromInstance(instance, outputName, logMessage);
 
         return { buffer: data.buffer, thumbnail: thumbnailBuffer };
