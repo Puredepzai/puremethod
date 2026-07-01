@@ -208,7 +208,7 @@ function buildCo64Atom(
     return b;
 }
 
-function detectCodec(bytes, stblBox, getBoxHeaderSize, parseBoxes) {
+function detectCodec(bytes, stblBox) {
     const stblChildren = parseBoxes(
         bytes,
         new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength),
@@ -302,8 +302,6 @@ export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 5) {
     const codec = detectCodec(
         inputBytes,
         stblBox,
-        getBoxHeaderSize,
-        parseBoxes,
     );
     const dummySize = DUMMY_SIZES[codec] || DEFAULT_DUMMY_SIZE;
 

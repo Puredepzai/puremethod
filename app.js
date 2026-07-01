@@ -25,6 +25,13 @@ import {
     updateChunkOffsets,
 } from "./src/mp4-boxes.mjs";
 import { inflateSampleTableVideo } from "./src/mp4-inflate.mjs";
+import {
+    runVFI,
+    runHDR,
+    extractMovThumbnail,
+    destroyFFmpegInstance,
+    resolveInputExtension,
+} from "./src/video-processor.js";
 
 const FRAME_CAPTURE_TIMEOUT_MS = 5000;
 const METADATA_TIMEOUT_MS = 10000;
@@ -607,312 +614,7 @@ function getVideoDurationAndResolution(file) {
     });
 }
 
-let ffmpegInstance = null;
 
-async function destroyFFmpegInstance() {
-    if (!ffmpegInstance) return;
-    try {
-        await ffmpegInstance.terminate();
-    } catch (err) {
-        console.error("FFmpeg terminate failed:", err);
-    }
-    ffmpegInstance = null;
-}
-
-async function getFFmpeg() {
-    if (ffmpegInstance) return ffmpegInstance;
-
-    const { FFmpeg } = await import("@ffmpeg/ffmpeg");
-    const { toBlobURL } = await import("@ffmpeg/util");
-
-    ffmpegInstance = new FFmpeg();
-    logMessage("Loading video processing engine...", "info");
-    const isMultiThread =
-        typeof window.SharedArrayBuffer !== "undefined" &&
-        window.crossOriginIsolated;
-    const baseURL = isMultiThread
-        ? "https://cdn.jsdelivr.net/npm/@ffmpeg/core-mt@0.12.6/dist/esm"
-        : "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm";
-    ffmpegInstance.on("progress", ({ progress }) => {
-        setProgress(Math.round(progress * 100));
-    });
-    try {
-        const loadConfig = {
-            coreURL: await toBlobURL(
-                `${baseURL}/ffmpeg-core.js`,
-                "text/javascript",
-            ),
-            wasmURL: await toBlobURL(
-                `${baseURL}/ffmpeg-core.wasm`,
-                "application/wasm",
-            ),
-            classWorkerURL: await toBlobURL(
-                "https://esm.sh/@ffmpeg/ffmpeg@0.12.15/es2022/dist/esm/worker.bundle.mjs",
-                "text/javascript",
-            ),
-        };
-        if (isMultiThread) {
-            loadConfig.workerURL = await toBlobURL(
-                `${baseURL}/ffmpeg-core.worker.js`,
-                "text/javascript",
-            );
-        }
-        await ffmpegInstance.load(loadConfig);
-        logMessage("Video processing engine loaded successfully.", "success");
-    } catch (err) {
-        await destroyFFmpegInstance();
-        throw err;
-    }
-    return ffmpegInstance;
-}
-
-function resolveInputExtension(file) {
-    const lower = file.name.toLowerCase();
-    if (lower.endsWith(".mov")) return ".mov";
-    if (lower.endsWith(".webm")) return ".webm";
-    return ".mp4";
-}
-
-async function runVFI(file, width, height, targetRes = 1080) {
-    const { fetchFile } = await import("@ffmpeg/util");
-
-    let instance;
-    try {
-        if (isCancelled) throw new Error("Cancelled");
-        instance = await getFFmpeg();
-        if (isCancelled) throw new Error("Cancelled");
-        const ext = resolveInputExtension(file);
-        const inputName = `input${ext}`;
-        const outputName = `output${ext}`;
-
-        logMessage("Preparing video data streams...", "info");
-        await instance.writeFile(inputName, await fetchFile(file));
-        if (isCancelled) throw new Error("Cancelled");
-
-        const isMultiThread =
-            typeof window.SharedArrayBuffer !== "undefined" &&
-            window.crossOriginIsolated;
-        const threads = Math.min(navigator.hardwareConcurrency || 4, 8);
-        if (!isMultiThread) {
-            logMessage(
-                "Notice: Single-threaded mode active. Enable HTTPS/cross-origin isolation for faster processing.",
-                "warning",
-            );
-        }
-
-        let filter =
-            "mpdecimate,minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4";
-        if (width > height) {
-            filter = `scale=-2:${targetRes},${filter}`;
-        } else {
-            filter = `scale=${targetRes}:-2,${filter}`;
-        }
-
-        logMessage(
-            "Interpolating video frames to 60fps (HEVC)... This may take a minute.",
-            "info",
-        );
-
-        const args = [
-            "-i",
-            inputName,
-            "-vf",
-            filter,
-            "-c:v",
-            "libx265",
-            "-preset",
-            "ultrafast",
-            "-crf",
-            "20",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            ext.toLowerCase() === ".mov" ? "aac" : "copy",
-            ...(ext.toLowerCase() === ".mov" ? ["-b:a", "256k"] : []),
-            "-video_track_timescale",
-            "90000",
-            "-threads",
-            String(threads),
-            outputName,
-        ];
-
-        logMessage("Encoding in progress, please wait...", "info");
-        const ret = await instance.exec(args);
-        if (ret !== 0 && ret !== undefined) {
-            throw new Error(`FFmpeg exited with code ${ret}`);
-        }
-        logMessage("Encoding complete.", "success");
-
-        const thumbnailBuffer = await extractThumbnailFromInstance(
-            instance,
-            outputName,
-        );
-        const data = await instance.readFile(outputName);
-        if (!data || data.byteLength < 100) {
-            throw new Error("FFmpeg produced an empty or invalid output file.");
-        }
-
-        await instance.deleteFile(inputName).catch(() => {});
-        await instance.deleteFile(outputName).catch(() => {});
-
-        return { buffer: data.buffer, thumbnail: thumbnailBuffer };
-    } catch (err) {
-        await destroyFFmpegInstance();
-        throw err;
-    }
-}
-
-async function extractMovThumbnail(file) {
-    const { fetchFile } = await import("@ffmpeg/util");
-    let instance;
-    try {
-        instance = await getFFmpeg();
-        await instance.writeFile("thumb_input.mov", await fetchFile(file));
-        await instance.exec([
-            "-i",
-            "thumb_input.mov",
-            "-ss",
-            "0.1",
-            "-vframes",
-            "1",
-            "-f",
-            "mjpeg",
-            "thumb.jpg",
-        ]);
-        const data = await instance.readFile("thumb.jpg");
-        await instance.deleteFile("thumb_input.mov").catch(() => {});
-        await instance.deleteFile("thumb.jpg").catch(() => {});
-        if (data && data.length > 100) {
-            return data.buffer;
-        }
-    } catch (_) {
-        // Do not destroy instance globally to keep cached for main pipeline
-    }
-    return null;
-}
-
-async function extractThumbnailFromInstance(instance, videoFilename) {
-    try {
-        await instance.exec([
-            "-ss",
-            "0.1",
-            "-i",
-            videoFilename,
-            "-vframes",
-            "1",
-            "-vf",
-            "scale=320:-2",
-            "-f",
-            "mjpeg",
-            "thumb.jpg",
-        ]);
-        const data = await instance.readFile("thumb.jpg");
-        await instance.deleteFile("thumb.jpg").catch(() => {});
-        if (data && data.length > 100) {
-            return data.buffer;
-        }
-    } catch (e) {
-        logMessage(`Thumbnail capture failed: ${e.message}`, "warning");
-    }
-    return null;
-}
-
-async function runHDR(file, width, height) {
-    const { fetchFile } = await import("@ffmpeg/util");
-    let instance;
-    try {
-        if (isCancelled) throw new Error("Cancelled");
-        instance = await getFFmpeg();
-        if (isCancelled) throw new Error("Cancelled");
-
-        const ext = resolveInputExtension(file);
-        const inputName = `input${ext}`;
-        const outputName = "output.mp4";
-
-        // pipeline prepared silently
-        await instance.writeFile(inputName, await fetchFile(file));
-        if (isCancelled) throw new Error("Cancelled");
-
-        const isMultiThread =
-            typeof window.SharedArrayBuffer !== "undefined" &&
-            window.crossOriginIsolated;
-        const threads = Math.min(navigator.hardwareConcurrency || 4, 8);
-
-        const targetRes = Number.parseInt(
-            document.getElementById("outputResolution")?.value || "1080",
-            10,
-        );
-
-        let filter =
-            "eq=brightness=0.20:contrast=1.25," +
-            "zscale=transfer=linear," +
-            "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
-            "format=yuv420p10le";
-        if (width > height) {
-            filter = `scale=-2:${targetRes},${filter}`;
-        } else {
-            filter = `scale=${targetRes}:-2,${filter}`;
-        }
-
-        logMessage(
-            "Converting SDR to HDR10 (HEVC 10-bit)... This may take a few minutes.",
-            "info",
-        );
-
-        const args = [
-            "-i",
-            inputName,
-            "-vf",
-            filter,
-            "-c:v",
-            "libx265",
-            "-preset",
-            "fast",
-            "-crf",
-            "18",
-            "-maxrate",
-            "20M",
-            "-bufsize",
-            "40M",
-            "-pix_fmt",
-            "yuv420p10le",
-            "-x265-params",
-            "hdr10=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,50):max-cll=1000,400",
-            "-c:a",
-            ext.toLowerCase() === ".mov" ? "aac" : "copy",
-            ...(ext.toLowerCase() === ".mov" ? ["-b:a", "256k"] : []),
-            "-video_track_timescale",
-            "90000",
-            "-threads",
-            String(threads),
-            outputName,
-        ];
-
-        logMessage("Encoding in progress, please wait...", "info");
-        const ret = await instance.exec(args);
-        if (ret !== 0 && ret !== undefined) {
-            throw new Error(`FFmpeg exited with code ${ret}`);
-        }
-        logMessage("Encoding complete.", "success");
-
-        const thumbnailBuffer = await extractThumbnailFromInstance(
-            instance,
-            outputName,
-        );
-        const data = await instance.readFile(outputName);
-        if (!data || data.byteLength < 100) {
-            throw new Error("FFmpeg produced an empty or invalid output file.");
-        }
-
-        await instance.deleteFile(inputName).catch(() => {});
-        await instance.deleteFile(outputName).catch(() => {});
-
-        return { buffer: data.buffer, thumbnail: thumbnailBuffer };
-    } catch (err) {
-        await destroyFFmpegInstance();
-        throw err;
-    }
-}
 
 function detectVideoCodecFromMoov(bytes, view, moovBox) {
     const moovChildren = parseBoxes(
@@ -1153,7 +855,7 @@ async function patchSingleFile(item) {
     if (isMovFile(item.file) && !enableInterpolation?.checked) {
         logMessage("Processing MOV file directly...", "info");
         logMessage("Extracting thumbnail from MOV...", "info");
-        movThumbnailBuffer = await extractMovThumbnail(item.file);
+        movThumbnailBuffer = await extractMovThumbnail(item.file, logMessage, setProgress);
         if (isCancelled) throw new Error("Cancelled");
     }
 
@@ -1173,7 +875,9 @@ async function patchSingleFile(item) {
             dims.width,
             dims.height,
             targetRes,
-            false,
+            () => isCancelled,
+            logMessage,
+            setProgress,
         );
         sourceBuffer = vfiResult.buffer;
         if (vfiResult.thumbnail) {
@@ -1199,7 +903,15 @@ async function patchSingleFile(item) {
         }
 
         const hdrInput = sourceBuffer ? new Blob([sourceBuffer]) : item.file;
-        const hdrResult = await runHDR(hdrInput, dims.width, dims.height);
+        const hdrResult = await runHDR(
+            hdrInput,
+            dims.width,
+            dims.height,
+            targetRes,
+            () => isCancelled,
+            logMessage,
+            setProgress,
+        );
         sourceBuffer = hdrResult.buffer;
         if (hdrResult.thumbnail) {
             movThumbnailBuffer = hdrResult.thumbnail;
@@ -1452,16 +1164,15 @@ patchBtn.addEventListener("click", async () => {
                     }
                     if (!thumbnail) {
                         try {
-                            thumbnail = await captureVideoFrame(blob);
-                            if (thumbnail) {
-                                logMessage(
-                                    "Thumbnail captured from output",
-                                    "info",
-                                );
+                            if (!enableInterpolation?.checked && !enableHDR?.checked) {
+                                thumbnail = await captureVideoFrame(blob);
+                                if (thumbnail) {
+                                    logMessage("Thumbnail captured from output", "info");
+                                }
+                            } else {
+                                logMessage("Skipping thumbnail capture (HEVC unsupported in browser)", "info");
                             }
-                        } catch (_) {
-                            // HEVC output can't be decoded by browser
-                        }
+                        } catch (_) {}
                     }
                     if (!thumbnail && !isMovFile(item.file)) {
                         thumbnail = await captureVideoFrame(item.file);
@@ -1483,10 +1194,10 @@ patchBtn.addEventListener("click", async () => {
                     await saveRecord({
                         id: self.crypto.randomUUID(),
                         name: result.outputName,
-                        size: result.finalBuffer.byteLength,
+                        size: result.finalBuffer?.byteLength || 0,
                         timestamp: Date.now(),
                         thumbnail,
-                        blob,
+                        blob: blob || new Blob([]),
                         mimeType: result.mimeType,
                     });
                     await renderHistoryList();
@@ -1514,7 +1225,13 @@ patchBtn.addEventListener("click", async () => {
             }
             item.status = "error";
             item.checked = false;
-            logMessage(`  Error: ${error.message}`, "error");
+            const msg = String(error.message || error);
+            // ponytail: OOM or cascading WASM crash
+            if (msg.includes("OOM") || msg.includes("startsWith") || msg.includes("Aborted")) {
+                logMessage("  Error: Out of memory. Try a lower resolution or a shorter video.", "error");
+            } else {
+                logMessage(`  Error: ${msg}`, "error");
+            }
         }
 
         renderFileList();

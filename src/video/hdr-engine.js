@@ -2,7 +2,7 @@ import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
-export async function runHDR(file, width, height, isCancelled, logMessage, setProgress) {
+export async function runHDR(file, width, height, targetRes, isCancelled, logMessage, setProgress) {
     let instance;
     const ext = resolveInputExtension(file);
     const inputName = `input${ext}`;
@@ -16,7 +16,6 @@ export async function runHDR(file, width, height, isCancelled, logMessage, setPr
         if (isCancelled()) throw new Error("Cancelled");
 
         const threads = Math.min(navigator.hardwareConcurrency || 4, 8);
-        const targetRes = Number.parseInt(document.getElementById("outputResolution")?.value || "1080", 10);
 
         let filter =
             "eq=brightness=0.20:contrast=1.25," +
