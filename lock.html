@@ -5,7 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PureMethod — Access Key</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
     body {
       background: #000000;
       display: flex;
@@ -16,6 +21,7 @@
       color: #ffffff;
       padding: 20px;
     }
+
     .lock-card {
       background: #111111;
       border: 2px solid #333333;
@@ -26,10 +32,32 @@
       text-align: center;
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
     }
-    .lock-icon { font-size: 48px; margin-bottom: 16px; display: block; }
-    .lock-title { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: #ffffff; }
-    .lock-title span { color: #aaaaaa; }
-    .lock-sub { font-size: 14px; color: #888888; margin-bottom: 32px; font-weight: 400; }
+
+    .lock-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .lock-title {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }
+
+    .lock-title span {
+      color: #aaaaaa;
+    }
+
+    .lock-sub {
+      font-size: 14px;
+      color: #888888;
+      margin-bottom: 32px;
+      font-weight: 400;
+    }
+
     .lock-input {
       width: 100%;
       padding: 14px 16px;
@@ -43,8 +71,15 @@
       transition: border-color 0.2s ease;
       box-sizing: border-box;
     }
-    .lock-input:focus { border-color: #ffffff; }
-    .lock-input::placeholder { color: #555555; }
+
+    .lock-input:focus {
+      border-color: #ffffff;
+    }
+
+    .lock-input::placeholder {
+      color: #555555;
+    }
+
     .lock-btn {
       width: 100%;
       padding: 14px;
@@ -59,15 +94,50 @@
       cursor: pointer;
       transition: all 0.15s ease;
     }
-    .lock-btn:hover { background: #000000; color: #ffffff; border-color: #ffffff; }
-    .lock-btn:active { transform: scale(0.97); }
-    .lock-error { color: #ff5555; font-size: 13px; margin-top: 14px; min-height: 20px; font-weight: 500; }
-    .lock-footer { margin-top: 32px; font-size: 12px; color: #444444; border-top: 1px solid #222222; padding-top: 20px; }
-    .lock-footer a { color: #666666; text-decoration: none; }
-    .lock-footer a:hover { color: #ffffff; }
+
+    .lock-btn:hover {
+      background: #000000;
+      color: #ffffff;
+      border-color: #ffffff;
+    }
+
+    .lock-btn:active {
+      transform: scale(0.97);
+    }
+
+    .lock-error {
+      color: #ff5555;
+      font-size: 13px;
+      margin-top: 14px;
+      min-height: 20px;
+      font-weight: 500;
+    }
+
+    .lock-footer {
+      margin-top: 32px;
+      font-size: 12px;
+      color: #444444;
+      border-top: 1px solid #222222;
+      padding-top: 20px;
+    }
+
+    .lock-footer a {
+      color: #666666;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .lock-footer a:hover {
+      color: #ffffff;
+    }
+
     @media (max-width: 480px) {
-      .lock-card { padding: 32px 20px; }
-      .lock-title { font-size: 22px; }
+      .lock-card {
+        padding: 32px 20px;
+      }
+      .lock-title {
+        font-size: 22px;
+      }
     }
   </style>
 </head>
@@ -82,7 +152,7 @@
     <div class="lock-error" id="lockError"></div>
 
     <div class="lock-footer">
-      <a href="#" id="resetDevice" style="cursor: pointer;">Reset device</a>
+      <a href="https://www.tiktok.com/@pure.xyz" target="_blank" rel="noopener noreferrer">Follow us on TikTok</a>
     </div>
   </div>
 
@@ -149,16 +219,6 @@
     btn.addEventListener('click', tryUnlock);
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') tryUnlock();
-    });
-
-    // ===== RESET (cho phép dùng key mới trên thiết bị mới) =====
-    document.getElementById('resetDevice').addEventListener('click', function(e) {
-      e.preventDefault();
-      localStorage.removeItem('puremethod_key');
-      localStorage.removeItem('puremethod_device');
-      localStorage.removeItem('puremethod_activated');
-      error.textContent = '✅ Device reset. You can use a new key.';
-      setTimeout(() => location.reload(), 1200);
     });
 
     input.focus();
