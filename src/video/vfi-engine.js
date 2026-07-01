@@ -48,14 +48,14 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         
         if (applyHDR) {
             filter =
-                "minterpolate=fps=600:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4," +
+                "minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4," +
                 "eq=brightness=0.20:contrast=1.25," +
                 "zscale=transfer=linear," +
                 "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
                 "format=yuv420p10le";
         } else {
             filter =
-                "minterpolate=fps=600:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4";
+                "minterpolate=fps=60:mi_mode=mci:me_mode=bilat:me=epzs:search_param=4";
         }
         
         if (width > height) {
