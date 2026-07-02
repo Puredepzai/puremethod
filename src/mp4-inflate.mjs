@@ -260,7 +260,7 @@ function buildStscPatch(inputBytes, inputView, stscBox, origStcoCount) {
     return b;
 }
 
-export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 5) {
+export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
     const fileSize = inputBytes.length;
     const topBoxes = parseBoxes(inputBytes, inputView, 0, fileSize);
     const moovBox = topBoxes.find((b) => b.type === "moov");
