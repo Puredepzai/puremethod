@@ -6,7 +6,7 @@ let ffmpegInstance = null;
 export async function destroyFFmpegInstance() {
     if (!ffmpegInstance) return;
     const tempInstance = ffmpegInstance;
-    ffmpegInstance = null; // Set null first so concurrent callers see a dead instance
+    ffmpegInstance = null;
     try {
         await tempInstance.terminate();
     } catch (err) {
@@ -19,6 +19,7 @@ export async function getFFmpeg(logMessage, setProgress) {
 
     ffmpegInstance = new FFmpeg();
     logMessage("Loading video processing engine...", "info");
+    
     const isMultiThread =
         typeof window.SharedArrayBuffer !== "undefined" &&
         window.crossOriginIsolated;
@@ -27,7 +28,7 @@ export async function getFFmpeg(logMessage, setProgress) {
         : "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm";
     
     ffmpegInstance.on("progress", ({ progress }) => {
-        setProgress(Math.round(progress * 100));
+        if (setProgress) setProgress(Math.round(progress * 100));
     });
 
     try {
@@ -43,6 +44,15 @@ export async function getFFmpeg(logMessage, setProgress) {
             loadConfig.workerURL = await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, "text/javascript");
         }
         await ffmpegInstance.load(loadConfig);
+        
+        // ===== TĂNG MEMORY LIMIT =====
+        try {
+            await ffmpegInstance.setMemoryLimit(2048 * 1024 * 1024); // 2GB
+            logMessage("🧠 Memory limit set to 2GB", "info");
+        } catch (_) {
+            logMessage("⚠️ setMemoryLimit not supported on this FFmpeg version", "warning");
+        }
+        
         logMessage("Video processing engine loaded successfully.", "success");
     } catch (err) {
         await destroyFFmpegInstance();
