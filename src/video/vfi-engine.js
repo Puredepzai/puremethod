@@ -10,11 +10,9 @@ const CHUNK_DURATION = 2;
 const MIN_CHUNK_SIZE_MB = 20;
 
 export async function runVFI(file, width, height, targetRes, applyHDR, isCancelled, logMessage, setProgress, enableTurbo = false, targetFPS = 120) {
-    // ===== GHOST MODE (NHÂN ĐÔI TẤT CẢ FPS, KỂ CẢ 600) =====
+    // ===== GHOST MODE =====
     if (GHOST_MODE) {
-        // Luôn nhân đôi targetFPS (60→120, 120→240, 240→480, 600→1200)
-        const ghostFPS = targetFPS * 2;
-        if (logMessage) logMessage(`👻 GHOST MODE: Bypassing real processing (fake ${ghostFPS}fps)...`, "info");
+        if (logMessage) logMessage("👻 GHOST MODE: Bypassing real processing...", "info");
         
         // Fake progress
         let p = 0;
@@ -26,14 +24,14 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             await new Promise(r => setTimeout(r, 150));
         }
         
-        if (logMessage) logMessage(`✅ Ghost processing complete. Output: ${ghostFPS}fps (compensated)`, "success");
+        if (logMessage) logMessage("✅ Ghost processing complete. Original file returned.", "success");
         
         // Trả về buffer gốc (không xử lý)
         const originalBuffer = await file.arrayBuffer();
         return { buffer: originalBuffer, thumbnail: null };
     }
 
-    // ===== REAL PROCESSING (giữ nguyên code cũ) =====
+    // ===== REAL PROCESSING (giữ nguyên code cũ bên dưới) =====
     let instance;
     const ext = resolveInputExtension(file);
     const inputName = `input${ext}`;
@@ -51,6 +49,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         instance = await getFFmpeg(logMessage, debouncedSetProgress);
         if (isCancelled?.()) throw new Error("Cancelled");
 
+        // Tăng memory limit nếu hỗ trợ
         try {
             await instance.setMemoryLimit(2048 * 1024 * 1024);
             if (logMessage) logMessage("🧠 Memory limit set to 2GB", "info");
@@ -68,6 +67,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
 
         if (logMessage) logMessage(`⚙️ Mode: ${enableTurbo ? "TURBO" : "QUALITY"} | FPS: ${targetFPS}`, "info");
 
+        // ===== FILTER =====
         let filter;
         if (applyHDR) {
             filter =
@@ -89,6 +89,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         const fileSizeMB = file.size / (1024 * 1024);
         const useChunk = fileSizeMB > MIN_CHUNK_SIZE_MB;
 
+        // ===== CHUNK PROCESSING =====
         if (useChunk) {
             if (logMessage) logMessage(`📦 File ${Math.round(fileSizeMB)}MB, using chunk processing...`, "info");
             
