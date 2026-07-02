@@ -1053,12 +1053,17 @@ async function patchSingleFile(item) {
         logMessage("  Container already normalized.", "info");
     }
 
-    const inflateResult = inflateSampleTableVideo(finalBytes, finalView, 10);
+    // ===== LẤY FPS TỪ UI =====
+    const targetFPSForInflate = parseInt(document.getElementById("targetFPS")?.value || "120");
+    const baseFPS = 60;
+    const multiplier = Math.max(1, Math.round(targetFPSForInflate / baseFPS));
+
+    const inflateResult = inflateSampleTableVideo(finalBytes, finalView, multiplier);
     if (inflateResult) {
         finalBuffer = inflateResult.newBuffer;
         finalBytes = inflateResult.newBytes;
         finalView = new DataView(finalBuffer);
-        logMessage("  Frame Density Inflation: Applied.", "success");
+        logMessage(`  Frame Density Inflation: Applied (${targetFPSForInflate}fps).`, "success");
     } else {
         logMessage("  Frame Density Inflation skipped.", "warning");
     }
