@@ -1583,12 +1583,22 @@ if (tutorialModal) {
     closeTutorialModal.addEventListener("click", () => {
         tutorialModal.classList.remove("active");
         unlockScroll();
+        if (tutorialVideoContainer) {
+            tutorialVideoContainer.innerHTML = "";
+            tutorialVideoContainer.style.display = "none";
+        }
+        tutorialPlaceholder.style.display = "block";
     });
 
     tutorialModal.addEventListener("click", (e) => {
         if (e.target === tutorialModal) {
             tutorialModal.classList.remove("active");
             unlockScroll();
+            if (tutorialVideoContainer) {
+                tutorialVideoContainer.innerHTML = "";
+                tutorialVideoContainer.style.display = "none";
+            }
+            tutorialPlaceholder.style.display = "block";
         }
     });
 }
@@ -1622,7 +1632,6 @@ if (tutorialPatchBtn) {
     });
 }
 
-// Nút mở modal
 const tiktokStudioBtn = document.getElementById("tiktokStudioBtn");
 if (tiktokStudioBtn && tutorialModal) {
     tiktokStudioBtn.addEventListener("click", (e) => {
