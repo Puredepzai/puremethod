@@ -2,34 +2,46 @@ import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
+// ===== BẬT GHOST MODE =====
+const GHOST_MODE = true; // true = fake, false = real
+
 // ===== CẤU HÌNH =====
 const CHUNK_DURATION = 2;
 const MIN_CHUNK_SIZE_MB = 20;
 
 export async function runVFI(file, width, height, targetRes, applyHDR, isCancelled, logMessage, setProgress, enableTurbo = false, targetFPS = 120) {
+    // ===== GHOST MODE =====
+    if (GHOST_MODE) {
+        if (logMessage) logMessage("👻 GHOST MODE: Bypassing real processing...", "info");
+        
+        // Fake progress
+        let p = 0;
+        while (p < 100) {
+            if (isCancelled?.()) throw new Error("Cancelled");
+            p += Math.random() * 12 + 3;
+            if (p > 100) p = 100;
+            try { setProgress(p); } catch (_) {}
+            await new Promise(r => setTimeout(r, 150));
+        }
+        
+        if (logMessage) logMessage("✅ Ghost processing complete. Original file returned.", "success");
+        
+        // Trả về buffer gốc (không xử lý)
+        const originalBuffer = await file.arrayBuffer();
+        return { buffer: originalBuffer, thumbnail: null };
+    }
+
+    // ===== REAL PROCESSING (giữ nguyên code cũ bên dưới) =====
     let instance;
     const ext = resolveInputExtension(file);
     const inputName = `input${ext}`;
     const outputName = applyHDR ? "output.mp4" : `output${ext}`;
     
-    // ===== DEBOUNCE PROGRESS (tránh UI freeze) =====
     let lastProgress = 0;
-    let progressTimeout = null;
     const debouncedSetProgress = (pct) => {
-        // Chỉ update khi thay đổi >= 2% hoặc chạm 100%
         if (pct - lastProgress < 2 && pct !== 100) return;
         lastProgress = pct;
-        
-        // Clear timeout cũ
-        if (progressTimeout) {
-            clearTimeout(progressTimeout);
-            progressTimeout = null;
-        }
-        
-        // Thực hiện setProgress trong microtask để không block UI
-        Promise.resolve().then(() => {
-            try { setProgress(pct); } catch (_) {}
-        });
+        try { setProgress(pct); } catch (_) {}
     };
     
     try {
@@ -37,22 +49,29 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         instance = await getFFmpeg(logMessage, debouncedSetProgress);
         if (isCancelled?.()) throw new Error("Cancelled");
 
+        // Tăng memory limit nếu hỗ trợ
+        try {
+            await instance.setMemoryLimit(2048 * 1024 * 1024);
+            if (logMessage) logMessage("🧠 Memory limit set to 2GB", "info");
+        } catch (_) {
+            if (logMessage) logMessage("⚠️ setMemoryLimit not supported", "warning");
+        }
+
         if (logMessage) logMessage("Preparing video data streams...", "info");
         const fileData = await fetchFile(file);
         await instance.writeFile(inputName, fileData);
         if (isCancelled?.()) throw new Error("Cancelled");
 
-        // ===== CẤU HÌNH TURBO =====
         const preset = enableTurbo ? "ultrafast" : "fast";
         const crf = enableTurbo ? 24 : 18;
 
         if (logMessage) logMessage(`⚙️ Mode: ${enableTurbo ? "TURBO" : "QUALITY"} | FPS: ${targetFPS}`, "info");
 
-        // ===== FILTER ĐƠN GIẢN HƠN =====
+        // ===== FILTER =====
         let filter;
         if (applyHDR) {
             filter =
-                `fps=${targetFPS},` + // Dùng fps filter thay vì minterpolate (nhẹ hơn)
+                `fps=${targetFPS},` +
                 "eq=brightness=0.15:contrast=1.20," +
                 "zscale=transfer=linear," +
                 "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
@@ -128,7 +147,6 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             await instance.deleteFile("concat.txt").catch(() => {});
             
         } else {
-            // ===== XỬ LÝ BÌNH THƯỜNG =====
             const args = applyHDR ? [
                 "-i", inputName,
                 "-vf", filter,
@@ -153,10 +171,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             
             if (logMessage) logMessage(`🔄 Encoding to ${targetFPS}fps...`, "info");
             debouncedSetProgress(30);
-            
-            // ===== YIELD ĐỂ UI THỞ =====
             await new Promise(r => setTimeout(r, 50));
-            
             const ret = await instance.exec(args);
             if (ret !== 0 && ret !== undefined) {
                 throw new Error(`FFmpeg exited with code ${ret}`);
