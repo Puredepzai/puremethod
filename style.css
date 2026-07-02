@@ -573,3 +573,34 @@ body::before {
 @media (max-width: 420px) {
   .btn-row { grid-template-columns: 1fr; }
 }
+
+/* ============ TUTORIAL MODAL STYLES ============ */
+.tutorial-btn {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+.tutorial-btn:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: var(--fg);
+}
+#tutorialVideoContainer {
+  position: relative;
+}
+#closeTutorialVideoBtn {
+  background: rgba(255,68,68,0.9);
+  border: none;
+  color: #fff;
+  padding: 6px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s var(--ease);
+}
+#closeTutorialVideoBtn:hover {
+  background: #ff2222;
+}
