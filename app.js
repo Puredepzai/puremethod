@@ -920,7 +920,7 @@ async function patchSingleFile(item) {
         : 1080;
 
     // ===== ĐỌC CẤU HÌNH TURBO VÀ FPS =====
-    const enableTurbo = document.getElementById("enableTurbo")?.checked || false;
+    const enableTurbo = false; // Luôn tắt
     const targetFPS = parseInt(document.getElementById("targetFPS")?.value || "120");
 
     let sourceBuffer = null;
