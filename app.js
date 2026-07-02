@@ -1571,31 +1571,12 @@ if (enableHDR && hdrModal) {
 
 outputResolution.addEventListener("change", updatePatchButton);
 
-const tiktokStudioBtn = document.getElementById("tiktokStudioBtn");
-const tutorialModal = document.getElementById("tutorialModal");
-
-if (tiktokStudioBtn && tutorialModal) {
-    tiktokStudioBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        tutorialModal.classList.add("active");
-        lockScroll();
-    });
-}
-
-initializeApp();
-
-const changelogContainer = document.getElementById("changelogContainer");
-if (changelogContainer) {
-    initChangelog(changelogContainer);
-}
-
 // ===== TUTORIAL MODAL =====
+const tutorialModal = document.getElementById("tutorialModal");
 const closeTutorialModal = document.getElementById("closeTutorialModal");
 const tutorialUploadBtn = document.getElementById("tutorialUploadBtn");
 const tutorialPatchBtn = document.getElementById("tutorialPatchBtn");
 const tutorialVideoContainer = document.getElementById("tutorialVideoContainer");
-const tutorialVideo = document.getElementById("tutorialVideo");
-const closeTutorialVideoBtn = document.getElementById("closeTutorialVideoBtn");
 const tutorialPlaceholder = document.getElementById("tutorialPlaceholder");
 
 if (tutorialModal) {
@@ -1612,20 +1593,20 @@ if (tutorialModal) {
     });
 }
 
-if (closeTutorialVideoBtn) {
-    closeTutorialVideoBtn.addEventListener("click", () => {
-        tutorialVideo.setAttribute("src", "");
-        tutorialVideoContainer.style.display = "none";
-        tutorialPlaceholder.style.display = "block";
-    });
-}
-
 function playTutorialVideo(videoUrl) {
-    tutorialVideo.setAttribute("src", videoUrl);
+    tutorialVideoContainer.innerHTML = `
+        <iframe 
+            src="${videoUrl}?autoplay=1&rel=0" 
+            style="width: 100%; height: 300px; border-radius: 8px; background: #000; border: none;"
+            allowfullscreen
+            allow="autoplay; encrypted-media"
+        ></iframe>
+    `;
     tutorialVideoContainer.style.display = "block";
     tutorialPlaceholder.style.display = "none";
 }
 
+// ===== YOUTUBE LINKS =====
 const UPLOAD_VIDEO_URL = "https://www.youtube.com/embed/--x7yN3thgI";
 const PATCH_VIDEO_URL = "https://www.youtube.com/embed/lT7GCn85VRk";
 
@@ -1639,4 +1620,23 @@ if (tutorialPatchBtn) {
     tutorialPatchBtn.addEventListener("click", () => {
         playTutorialVideo(PATCH_VIDEO_URL);
     });
+}
+
+// Nút mở modal
+const tiktokStudioBtn = document.getElementById("tiktokStudioBtn");
+if (tiktokStudioBtn && tutorialModal) {
+    tiktokStudioBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        tutorialModal.classList.add("active");
+        lockScroll();
+        tutorialVideoContainer.style.display = "none";
+        tutorialPlaceholder.style.display = "block";
+    });
+}
+
+initializeApp();
+
+const changelogContainer = document.getElementById("changelogContainer");
+if (changelogContainer) {
+    initChangelog(changelogContainer);
 }
