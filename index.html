@@ -69,7 +69,6 @@
             </label>
             <div class="setting-desc">SDR → HDR10 (PQ, BT.2020)</div>
 
-            <!-- ===== THÊM DROPDOWN FPS ===== -->
             <div class="stat-item" style="margin-top: 10px;">
               <span class="stat-label">🎯 Target FPS</span>
               <select class="stat-select" id="targetFPS">
@@ -124,7 +123,7 @@
         <button class="btn btn-clear" id="clearBtn">Clear</button>
         <button class="btn btn-patch" id="patchBtn" disabled>Patch Videos</button>
       </div>
-      <a class="btn btn-tiktok" id="tiktokStudioBtn" href="https://www.tiktok.com/tiktokstudio/upload" target="_blank">tutorial</a>
+      <a class="btn btn-tiktok" id="tiktokStudioBtn" href="javascript:void(0)">📖 Tutorial</a>
       <div class="upload-note">
         <i data-lucide="info"></i>
         <span>Watch the tutorial above.</span>
@@ -162,6 +161,36 @@
     <footer class="footer">
       <a href="https://www.tiktok.com/@pure.xyz" target="_blank">TikTok</a>
     </footer>
+  </div>
+
+  <!-- ===== TUTORIAL MODAL ===== -->
+  <div class="modal-overlay" id="tutorialModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <i data-lucide="info"></i>
+          <span class="modal-title">📖 Tutorial</span>
+        </div>
+        <button class="modal-close-btn" id="closeTutorialModal">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="tutorial-buttons" style="display: flex; gap: 10px; margin-bottom: 16px;">
+          <button class="modal-btn tutorial-btn" id="tutorialUploadBtn" style="flex: 1;">📤 How to Upload</button>
+          <button class="modal-btn tutorial-btn" id="tutorialPatchBtn" style="flex: 1;">🔧 How to Patch</button>
+        </div>
+
+        <div id="tutorialVideoContainer" style="display: none;">
+          <video id="tutorialVideo" controls style="width: 100%; max-height: 300px; border-radius: 8px; background: #000;"></video>
+          <button id="closeTutorialVideoBtn" style="margin-top: 10px; padding: 6px 16px; background: #ff4444; color: white; border: none; border-radius: 6px; cursor: pointer;">✖ Đóng video</button>
+        </div>
+
+        <div id="tutorialPlaceholder" style="text-align: center; color: var(--muted); padding: 20px 0;">
+          <p>Chọn một hướng dẫn bên trên để xem video.</p>
+        </div>
+      </div>
+    </div>
   </div>
 
   <input type="file" id="fileInput" accept="video/mp4,video/quicktime,.mp4,.mov" multiple />
