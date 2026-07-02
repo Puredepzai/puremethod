@@ -1575,39 +1575,15 @@ if (enableHDR && hdrModal) {
 
 outputResolution.addEventListener("change", updatePatchButton);
 
-const tiktokModal = document.getElementById("tiktokModal");
+// ===== TUTORIAL BUTTON FIX =====
 const tiktokStudioBtn = document.getElementById("tiktokStudioBtn");
-const closeTiktokModalBtn = document.getElementById("closeTiktokModalBtn");
-const cancelTiktokModalBtn = document.getElementById("cancelTiktokModalBtn");
-const confirmTiktokBtn = document.getElementById("confirmTiktokBtn");
+const tutorialModal = document.getElementById("tutorialModal");
 
-function isMobileDevice() {
-    return (
-        window.innerWidth <= MOBILE_BREAKPOINT ||
-        /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
-    );
-}
-
-if (tiktokStudioBtn && tiktokModal) {
+if (tiktokStudioBtn && tutorialModal) {
     tiktokStudioBtn.addEventListener("click", (e) => {
-        if (isMobileDevice()) {
-            e.preventDefault();
-            tiktokModal.classList.add("active");
-            lockScroll();
-        }
-    });
-
-    const closeTiktokModal = () => {
-        tiktokModal.classList.remove("active");
-        unlockScroll();
-    };
-
-    closeTiktokModalBtn?.addEventListener("click", closeTiktokModal);
-    cancelTiktokModalBtn?.addEventListener("click", closeTiktokModal);
-    confirmTiktokBtn?.addEventListener("click", closeTiktokModal);
-
-    tiktokModal.addEventListener("click", (e) => {
-        if (e.target === tiktokModal) closeTiktokModal();
+        e.preventDefault();
+        tutorialModal.classList.add("active");
+        lockScroll();
     });
 }
 
@@ -1619,7 +1595,6 @@ if (changelogContainer) {
 }
 
 // ===== TUTORIAL MODAL =====
-const tutorialModal = document.getElementById("tutorialModal");
 const closeTutorialModal = document.getElementById("closeTutorialModal");
 const tutorialUploadBtn = document.getElementById("tutorialUploadBtn");
 const tutorialPatchBtn = document.getElementById("tutorialPatchBtn");
