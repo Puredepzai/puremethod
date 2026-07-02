@@ -1661,9 +1661,8 @@ function playTutorialVideo(videoUrl) {
 }
 
 // ===== THAY FILE_ID BẰNG ID THẬT CỦA MÀY =====
-const UPLOAD_FILE_ID = "1M72rQBPmOMKxhzEd5QFG3gKM4BROL5Oi";
-const PATCH_FILE_ID = "1M72rQBPmOMKxhzEd5QFG3gKM4BROL5Oi";
-const BASE_DRIVE_URL = "https://drive.google.com/uc?export=download&id=";
+const UPLOAD_VIDEO_URL = "https://www.youtube.com/embed/--x7yN3thgI";
+const PATCH_VIDEO_URL = "https://www.youtube.com/embed/lT7GCn85VRk";
 
 if (tutorialUploadBtn) {
     tutorialUploadBtn.addEventListener("click", () => {
