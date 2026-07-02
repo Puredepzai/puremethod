@@ -1666,25 +1666,12 @@ const PATCH_VIDEO_URL = "https://www.youtube.com/embed/lT7GCn85VRk";
 
 if (tutorialUploadBtn) {
     tutorialUploadBtn.addEventListener("click", () => {
-        playTutorialVideo(BASE_DRIVE_URL + UPLOAD_FILE_ID);
+        playTutorialVideo(UPLOAD_VIDEO_URL);
     });
 }
 
 if (tutorialPatchBtn) {
     tutorialPatchBtn.addEventListener("click", () => {
-        playTutorialVideo(BASE_DRIVE_URL + PATCH_FILE_ID);
-    });
-}
-
-const tiktokStudioBtn2 = document.getElementById("tiktokStudioBtn");
-if (tiktokStudioBtn2 && tutorialModal) {
-    tiktokStudioBtn2.addEventListener("click", (e) => {
-        e.preventDefault();
-        tutorialModal.classList.add("active");
-        lockScroll();
-        tutorialVideoContainer.style.display = "none";
-        tutorialPlaceholder.style.display = "block";
-        tutorialVideo.pause();
-        tutorialVideo.src = "";
+        playTutorialVideo(PATCH_VIDEO_URL);
     });
 }
