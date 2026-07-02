@@ -1619,7 +1619,6 @@ if (tutorialModal) {
 
 if (closeTutorialVideoBtn) {
     closeTutorialVideoBtn.addEventListener("click", () => {
-        tutorialVideo.pause();
         tutorialVideo.src = "";
         tutorialVideoContainer.style.display = "none";
         tutorialPlaceholder.style.display = "block";
@@ -1627,15 +1626,12 @@ if (closeTutorialVideoBtn) {
 }
 
 function playTutorialVideo(videoUrl) {
-    tutorialVideo.pause();
     tutorialVideo.src = videoUrl;
-    tutorialVideo.load();
     tutorialVideoContainer.style.display = "block";
     tutorialPlaceholder.style.display = "none";
-    tutorialVideo.play().catch(() => {});
 }
 
-// ===== THAY FILE_ID BẰNG ID THẬT CỦA MÀY =====
+// ===== YOUTUBE VIDEO URLs =====
 const UPLOAD_VIDEO_URL = "https://www.youtube.com/embed/--x7yN3thgI";
 const PATCH_VIDEO_URL = "https://www.youtube.com/embed/lT7GCn85VRk";
 
