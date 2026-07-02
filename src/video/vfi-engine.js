@@ -2,7 +2,7 @@ import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
-// ===== CẤU HÌNH CHỐNG CRASH =====
+// ===== CẤU HÌNH =====
 const CHUNK_DURATION = 2;
 const MIN_CHUNK_SIZE_MB = 20;
 
@@ -12,9 +12,29 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
     const inputName = `input${ext}`;
     const outputName = applyHDR ? "output.mp4" : `output${ext}`;
     
+    // ===== DEBOUNCE PROGRESS (tránh UI freeze) =====
+    let lastProgress = 0;
+    let progressTimeout = null;
+    const debouncedSetProgress = (pct) => {
+        // Chỉ update khi thay đổi >= 2% hoặc chạm 100%
+        if (pct - lastProgress < 2 && pct !== 100) return;
+        lastProgress = pct;
+        
+        // Clear timeout cũ
+        if (progressTimeout) {
+            clearTimeout(progressTimeout);
+            progressTimeout = null;
+        }
+        
+        // Thực hiện setProgress trong microtask để không block UI
+        Promise.resolve().then(() => {
+            try { setProgress(pct); } catch (_) {}
+        });
+    };
+    
     try {
         if (isCancelled?.()) throw new Error("Cancelled");
-        instance = await getFFmpeg(logMessage, setProgress);
+        instance = await getFFmpeg(logMessage, debouncedSetProgress);
         if (isCancelled?.()) throw new Error("Cancelled");
 
         if (logMessage) logMessage("Preparing video data streams...", "info");
@@ -28,17 +48,17 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
 
         if (logMessage) logMessage(`⚙️ Mode: ${enableTurbo ? "TURBO" : "QUALITY"} | FPS: ${targetFPS}`, "info");
 
-        // ===== FILTER DÙNG targetFPS =====
+        // ===== FILTER ĐƠN GIẢN HƠN =====
         let filter;
         if (applyHDR) {
             filter =
-                `minterpolate=fps=${targetFPS},` +
+                `fps=${targetFPS},` + // Dùng fps filter thay vì minterpolate (nhẹ hơn)
                 "eq=brightness=0.15:contrast=1.20," +
                 "zscale=transfer=linear," +
                 "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
                 "format=yuv420p10le";
         } else {
-            filter = `minterpolate=fps=${targetFPS}`;
+            filter = `fps=${targetFPS}`;
         }
         
         if (width > height) {
@@ -52,7 +72,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
 
         // ===== CHUNK PROCESSING =====
         if (useChunk) {
-            if (logMessage) logMessage(`📦 File ${Math.round(fileSizeMB)}MB, using chunk processing (${CHUNK_DURATION}s chunks)...`, "info");
+            if (logMessage) logMessage(`📦 File ${Math.round(fileSizeMB)}MB, using chunk processing...`, "info");
             
             const totalDuration = 30;
             const numChunks = Math.ceil(totalDuration / CHUNK_DURATION);
@@ -69,8 +89,8 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 await instance.exec(["-i", inputName, "-ss", String(start), "-t", String(CHUNK_DURATION), "-c", "copy", chunkInput]);
                 
                 const chunkFilter = applyHDR ? 
-                    `minterpolate=fps=${targetFPS},eq=brightness=0.15:contrast=1.20,zscale=transfer=linear,zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc,format=yuv420p10le` :
-                    `minterpolate=fps=${targetFPS}`;
+                    `fps=${targetFPS},eq=brightness=0.15:contrast=1.20,zscale=transfer=linear,zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc,format=yuv420p10le` :
+                    `fps=${targetFPS}`;
                 
                 const processArgs = [
                     "-i", chunkInput,
@@ -91,7 +111,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 
                 chunkFiles.push(chunkOutput);
                 totalProgress = Math.round(((i + 1) / numChunks) * 80);
-                if (setProgress) setProgress(totalProgress);
+                debouncedSetProgress(totalProgress);
                 
                 await instance.deleteFile(chunkInput).catch(() => {});
                 if (window.gc) try { window.gc(); } catch (_) {}
@@ -132,14 +152,20 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             ];
             
             if (logMessage) logMessage(`🔄 Encoding to ${targetFPS}fps...`, "info");
-            setProgress(30);
+            debouncedSetProgress(30);
+            
+            // ===== YIELD ĐỂ UI THỞ =====
+            await new Promise(r => setTimeout(r, 50));
+            
             const ret = await instance.exec(args);
             if (ret !== 0 && ret !== undefined) {
                 throw new Error(`FFmpeg exited with code ${ret}`);
             }
         }
 
-        setProgress(80);
+        debouncedSetProgress(80);
+        await new Promise(r => setTimeout(r, 50));
+        
         const data = await instance.readFile(outputName);
         if (!data || data.byteLength < 100) {
             throw new Error("FFmpeg produced an empty or invalid output file.");
@@ -150,7 +176,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             thumbnailBuffer = await extractThumbnailFromInstance(instance, outputName, logMessage);
         }
 
-        setProgress(100);
+        debouncedSetProgress(100);
         if (logMessage) logMessage(`✅ Done! ${targetFPS}fps`, "success");
 
         return { buffer: data.buffer, thumbnail: thumbnailBuffer };
