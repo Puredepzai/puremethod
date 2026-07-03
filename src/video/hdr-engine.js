@@ -21,16 +21,22 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
         const bytes = new Uint8Array(originalBuffer);
         const view = new DataView(originalBuffer);
         
-        // ===== UPDATE PROGRESS (KHÔNG LOOP, KHÔNG BLOCK UI) =====
+        // ===== UPDATE PROGRESS VỚI setTimeout ĐỂ UI THỞ =====
         setProgress(30);
-        await new Promise(r => setTimeout(r, 50));
+        await new Promise(r => setTimeout(r, 100));
         
-        // ===== INFLATE QUALITY (NHANH, KHÔNG ENCODE) =====
+        // ===== INFLATE QUALITY =====
         if (logMessage) logMessage(`📦 Enhancing video metadata...`, "info");
-        const inflated = inflateQualityVideo(bytes, view, 2);
+        
+        // Chạy inflate trong setTimeout để không block UI
+        const inflated = await new Promise((resolve) => {
+            setTimeout(() => {
+                resolve(inflateQualityVideo(bytes, view, 2));
+            }, 50);
+        });
         
         setProgress(80);
-        await new Promise(r => setTimeout(r, 50));
+        await new Promise(r => setTimeout(r, 100));
         
         if (inflated) {
             if (logMessage) logMessage(`✅ Quality enhancement applied!`, "success");
