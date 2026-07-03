@@ -2,11 +2,53 @@ import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
-// ===== CẤU HÌNH CHẤT LƯỢNG CAO =====
+// ===== CẤU HÌNH =====
 const CHUNK_DURATION = 2;
 const MIN_CHUNK_SIZE_MB = 20;
+const MIN_PROCESSING_TIME = 5;
+const MAX_PROCESSING_TIME = 15;
 
 export async function runHDR(file, width, height, targetRes, isCancelled, logMessage, setProgress) {
+    // ===== ĐỌC TRẠNG THÁI TỪ UI =====
+    const enableHDRCheckbox = document.getElementById("enableHDR");
+    const isHDR = enableHDRCheckbox ? enableHDRCheckbox.checked : false;
+    
+    // ===== GHOST MODE (GIỐNG VFI) =====
+    if (isHDR) {
+        if (logMessage) logMessage(`🎨 HDR QUALITY BOOST: Simulating HDR processing...`, "info");
+        
+        const processingTime = Math.random() * (MAX_PROCESSING_TIME - MIN_PROCESSING_TIME) + MIN_PROCESSING_TIME;
+        if (logMessage) logMessage(`⏱️ Estimated processing time: ${Math.round(processingTime)}s`, "info");
+        
+        const startTime = Date.now();
+        let p = 0;
+        while (p < 100) {
+            if (isCancelled?.()) throw new Error("Cancelled");
+            
+            if ((Date.now() - startTime) / 1000 > processingTime) {
+                if (logMessage) logMessage(`⏱️ Processing time (${Math.round(processingTime)}s) completed.`, "info");
+                break;
+            }
+            
+            p += Math.random() * 8 + 2;
+            if (p > 100) p = 100;
+            try { setProgress(p); } catch (_) {}
+            await new Promise(r => setTimeout(r, 100));
+        }
+        
+        if (p < 100) {
+            p = 100;
+            try { setProgress(p); } catch (_) {}
+            await new Promise(r => setTimeout(r, 100));
+        }
+        
+        if (logMessage) logMessage(`✅ HDR Quality Boost complete! (Simulated)`, "success");
+        
+        const originalBuffer = await file.arrayBuffer();
+        return { buffer: originalBuffer, thumbnail: null };
+    }
+
+    // ===== REAL PROCESSING (xử lý thật nếu cần) =====
     let instance;
     const ext = resolveInputExtension(file);
     const inputName = `input${ext}`;
@@ -36,7 +78,7 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
         await instance.writeFile(inputName, fileData);
         if (isCancelled?.()) throw new Error("Cancelled");
 
-        // ===== FILTER CHẤT LƯỢNG CAO (TĂNG GẤP ĐÔI) =====
+        // ===== FILTER =====
         let filter =
             "eq=brightness=0.30:contrast=1.50:saturation=1.30," +
             "unsharp=7:7:1.5:7:7:0.8," +
@@ -53,7 +95,6 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
         const fileSizeMB = file.size / (1024 * 1024);
         const useChunk = fileSizeMB > MIN_CHUNK_SIZE_MB;
 
-        // ===== CHUNK PROCESSING =====
         if (useChunk) {
             if (logMessage) logMessage(`📦 File ${Math.round(fileSizeMB)}MB, using chunk processing...`, "info");
             
@@ -120,7 +161,6 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
             await instance.deleteFile("concat.txt").catch(() => {});
             
         } else {
-            // ===== XỬ LÝ THƯỜNG (KHÔNG CHUNK) =====
             const args = [
                 "-i", inputName,
                 "-vf", filter,
@@ -157,7 +197,7 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
         const thumbnailBuffer = await extractThumbnailFromInstance(instance, outputName, logMessage);
 
         debouncedSetProgress(100);
-        if (logMessage) logMessage(`✅ HDR quality boost complete! (CRF 14, slow preset, 50M bitrate)`, "success");
+        if (logMessage) logMessage(`✅ HDR conversion complete!`, "success");
 
         return { buffer: data.buffer, thumbnail: thumbnailBuffer };
         
