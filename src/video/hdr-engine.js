@@ -101,4 +101,4 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
     if (logMessage) logMessage(`ℹ️ HDR not enabled. Returning original file.`, "info");
     const originalBuffer = await file.arrayBuffer();
     return { buffer: originalBuffer, thumbnail: null };
-}o
+}
