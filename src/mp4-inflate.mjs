@@ -457,3 +457,12 @@ export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
 
     return { newBuffer, newBytes, newView };
 }
+
+// ===== HÀM MỚI: TĂNG QUALITY BẰNG CÁCH SỬA METADATA (GIỐNG INFLATE FRAME) =====
+export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2) {
+    // Đây là bản sao của inflateSampleTableVideo nhưng thay vì nhân frame,
+    // nó sẽ tăng các thông số quality trong metadata (bitrate, color depth, v.v.)
+    // Hiện tại, tao để nó hoạt động y hệt nhưng với multiplier khác để test.
+    // Mày có thể customize sau.
+    return inflateSampleTableVideo(inputBytes, inputView, qualityMultiplier);
+}
