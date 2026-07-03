@@ -491,7 +491,6 @@ export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2
             const bitratePos = contentStart + 20;
             const currentBitrate = inputView.getUint32(bitratePos, false);
             const newBitrate = Math.round(currentBitrate * qualityMultiplier);
-            // Sửa trực tiếp trên bản sao
             newView.setUint32(bitratePos, newBitrate, false);
         }
     }
