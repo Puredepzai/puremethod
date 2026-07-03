@@ -458,9 +458,9 @@ export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
     return { newBuffer, newBytes, newView };
 }
 
-// ===== HÀM MỚI: TĂNG QUALITY (GIỐNG INFLATE FRAME) =====
+// ===== HÀM TĂNG QUALITY (GIỐNG INFLATE FRAME NHƯNG KHÔNG NHÂN FRAME) =====
 export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2) {
-    // Tạm thời dùng inflateSampleTableVideo với multiplier = 1 (không nhân frame)
-    // nhưng có thể customize để tăng bitrate, color depth, v.v.
+    // Dùng inflateSampleTableVideo với multiplier = 1 (không nhân frame)
+    // nhưng sửa bitrate/color depth trong tương lai
     return inflateSampleTableVideo(inputBytes, inputView, 1);
 }
