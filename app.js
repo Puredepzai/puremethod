@@ -941,7 +941,7 @@ async function patchSingleFile(item) {
         if (isCancelled) throw new Error("Cancelled");
     }
 
-    // ===== VFI (tăng FPS) =====
+    // ===== VFI (tăng FPS) - CHỈ CHẠY KHI BẬT INTERPOLATION =====
     if (enableInterpolation?.checked) {
         logMessage("Starting VFI Engine...", "info");
         if (isCancelled) throw new Error("Cancelled");
@@ -973,7 +973,7 @@ async function patchSingleFile(item) {
         }
         logMessage(applyHDR ? "60fps HDR processing complete." : "VFI processing complete.", "success");
     } 
-    // ===== HDR (tăng quality) =====
+    // ===== HDR (tăng quality) - CHỈ CHẠY KHI BẬT HDR MÀ KHÔNG BẬT INTERPOLATION =====
     else if (enableHDR?.checked) {
         logMessage("🎨 Starting HDR Quality Boost...", "info");
         if (isCancelled) throw new Error("Cancelled");
@@ -981,13 +981,9 @@ async function patchSingleFile(item) {
         const fileBytes = new Uint8Array(await item.file.arrayBuffer());
         const fileView = new DataView(fileBytes.buffer);
         
-        // Nếu có sourceBuffer từ VFI thì dùng, không thì dùng file gốc
-        const inputBytes = sourceBuffer ? new Uint8Array(sourceBuffer) : fileBytes;
-        const inputView = sourceBuffer ? new DataView(sourceBuffer) : fileView;
-        
         // ===== INFLATE QUALITY (sửa metadata, không FFmpeg) =====
         logMessage("  Enhancing video quality metadata...", "info");
-        const inflated = inflateQualityVideo(inputBytes, inputView, 2);
+        const inflated = inflateQualityVideo(fileBytes, fileView, 2);
         
         if (inflated) {
             sourceBuffer = inflated.newBuffer;
@@ -1585,8 +1581,6 @@ if (enableHDR && hdrModal) {
 
 outputResolution.addEventListener("change", updatePatchButton);
 
-// ... (giữ nguyên toàn bộ code phía trên, chỉ sửa từ phần TUTORIAL MODAL trở xuống)
-
 // ===== TUTORIAL MODAL =====
 const tutorialModal = document.getElementById("tutorialModal");
 const closeTutorialModal = document.getElementById("closeTutorialModal");
@@ -1594,7 +1588,6 @@ const tutorialUploadBtn = document.getElementById("tutorialUploadBtn");
 const tutorialPatchBtn = document.getElementById("tutorialPatchBtn");
 const tutorialPlaceholder = document.getElementById("tutorialPlaceholder");
 
-// Tạo container video nếu chưa có
 let tutorialVideoContainer = document.getElementById("tutorialVideoContainer");
 if (!tutorialVideoContainer) {
     tutorialVideoContainer = document.createElement("div");
@@ -1602,19 +1595,17 @@ if (!tutorialVideoContainer) {
     tutorialVideoContainer.style.display = "none";
     tutorialVideoContainer.style.position = "relative";
     tutorialVideoContainer.style.width = "100%";
-    tutorialVideoContainer.style.paddingBottom = "56.25%"; // tỷ lệ 16:9
+    tutorialVideoContainer.style.paddingBottom = "56.25%";
     tutorialVideoContainer.style.height = "0";
     tutorialVideoContainer.style.overflow = "hidden";
     tutorialVideoContainer.style.borderRadius = "8px";
     tutorialVideoContainer.style.background = "#000";
     const modalBody = document.querySelector(".modal-body");
     if (modalBody) {
-        // Chèn vào sau placeholder
         modalBody.insertBefore(tutorialVideoContainer, tutorialPlaceholder.nextSibling);
     }
 }
 
-// Đóng modal
 if (tutorialModal) {
     closeTutorialModal.addEventListener("click", () => {
         tutorialModal.classList.remove("active");
@@ -1653,7 +1644,6 @@ function playTutorialVideo(videoUrl) {
     if (tutorialPlaceholder) tutorialPlaceholder.style.display = "none";
 }
 
-// ===== YOUTUBE LINKS =====
 const UPLOAD_VIDEO_URL = "https://www.youtube.com/embed/--x7yN3thgI";
 const PATCH_VIDEO_URL = "https://www.youtube.com/embed/lT7GCn85VRk";
 
@@ -1669,7 +1659,6 @@ if (tutorialPatchBtn) {
     });
 }
 
-// Nút mở modal
 const tiktokStudioBtn = document.getElementById("tiktokStudioBtn");
 if (tiktokStudioBtn && tutorialModal) {
     tiktokStudioBtn.addEventListener("click", (e) => {
