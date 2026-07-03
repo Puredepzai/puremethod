@@ -36,13 +36,10 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
         await instance.writeFile(inputName, fileData);
         if (isCancelled?.()) throw new Error("Cancelled");
 
-        // ===== FILTER TĂNG QUALITY (CHẤT LƯỢNG CAO) =====
+        // ===== FILTER TĂNG QUALITY (KHÔNG LÀM HỎNG VIDEO) =====
         let filter =
-            "eq=brightness=0.30:contrast=1.50:saturation=1.30," +
-            "unsharp=7:7:1.5:7:7:0.8," +
-            "zscale=transfer=linear," +
-            "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
-            "format=yuv420p10le";
+            "eq=brightness=0.20:contrast=1.30:saturation=1.20," +
+            "unsharp=5:5:1.2:5:5:0.6";
         
         if (width > height) {
             filter = `scale=-2:${targetRes}:flags=lanczos,${filter}`;
@@ -53,13 +50,11 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
         const args = [
             "-i", inputName,
             "-vf", filter,
-            "-c:v", "libx265",
+            "-c:v", "libx264",
             "-preset", "slow",
-            "-crf", "14",
-            "-maxrate", "50M",
-            "-bufsize", "100M",
-            "-pix_fmt", "yuv420p10le",
-            "-x265-params", "hdr10=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,50):max-cll=1000,400",
+            "-crf", "15",
+            "-maxrate", "30M",
+            "-bufsize", "60M",
             "-c:a", "copy",
             "-video_track_timescale", "90000",
             "-threads", "4",
@@ -86,7 +81,7 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
         const thumbnailBuffer = await extractThumbnailFromInstance(instance, outputName, logMessage);
 
         setProgress(100);
-        if (logMessage) logMessage(`✅ HDR quality boost complete! (CRF 14, slow, 50M bitrate)`, "success");
+        if (logMessage) logMessage(`✅ HDR quality boost complete!`, "success");
 
         return { buffer: data.buffer, thumbnail: thumbnailBuffer };
         
