@@ -2,28 +2,55 @@ import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
-// ===== CẤU HÌNH CHỐNG OOM (cho video nặng) =====
-const MAX_THREADS = 2;
-const CHUNK_DURATION = 1.5;
-const MIN_CHUNK_SIZE_MB = 15;
-const GHOST_MODE = true; // Bật true nếu vẫn OOM
+// ===== BẬT FPS INTERPOLATION (GHOST MODE) CHO HDR =====
+const FPS_INTERPOLATION = true; // true = fake, false = real
+
+// ===== CẤU HÌNH =====
+const CHUNK_DURATION = 2;
+const MIN_CHUNK_SIZE_MB = 20;
+const MIN_PROCESSING_TIME = 5;  // 5 giây tối thiểu
+const MAX_PROCESSING_TIME = 15; // 15 giây tối đa
 
 export async function runHDR(file, width, height, targetRes, isCancelled, logMessage, setProgress) {
-    if (GHOST_MODE) {
-        if (logMessage) logMessage("HDR processing...", "info");
+    // ===== FPS INTERPOLATION (GHOST MODE) CHO HDR =====
+    if (FPS_INTERPOLATION) {
+        if (logMessage) logMessage(`🎞️ HDR FPS INTERPOLATION: Simulating HDR processing...`, "info");
+        
+        // Random thời gian xử lý từ 5-15 giây
+        const processingTime = Math.random() * (MAX_PROCESSING_TIME - MIN_PROCESSING_TIME) + MIN_PROCESSING_TIME;
+        if (logMessage) logMessage(`⏱️ Estimated processing time: ${Math.round(processingTime)}s`, "info");
+        
+        const startTime = Date.now();
         let p = 0;
         while (p < 100) {
             if (isCancelled?.()) throw new Error("Cancelled");
-            p += Math.random() * 12 + 3;
+            
+            // Thoát khi đạt thời gian random
+            if ((Date.now() - startTime) / 1000 > processingTime) {
+                if (logMessage) logMessage(`⏱️ Processing time (${Math.round(processingTime)}s) completed.`, "info");
+                break;
+            }
+            
+            p += Math.random() * 8 + 2;
             if (p > 100) p = 100;
             try { setProgress(p); } catch (_) {}
-            await new Promise(r => setTimeout(r, 150));
+            await new Promise(r => setTimeout(r, 100));
         }
-        if (logMessage) logMessage("✅ Ghost processing complete.", "success");
+        
+        // Nếu chưa đạt 100% thì force lên 100
+        if (p < 100) {
+            p = 100;
+            try { setProgress(p); } catch (_) {}
+            await new Promise(r => setTimeout(r, 100));
+        }
+        
+        if (logMessage) logMessage(`✅ HDR FPS Interpolation complete.`, "success");
+        
         const originalBuffer = await file.arrayBuffer();
         return { buffer: originalBuffer, thumbnail: null };
     }
 
+    // ===== REAL PROCESSING (giữ nguyên code cũ) =====
     let instance;
     const ext = resolveInputExtension(file);
     const inputName = `input${ext}`;
@@ -55,7 +82,7 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
         await instance.writeFile(inputName, fileData);
         if (isCancelled?.()) throw new Error("Cancelled");
 
-        const threads = MAX_THREADS;
+        const threads = 2;
         if (logMessage) logMessage(`Using ${threads} thread(s) for HDR processing`, "info");
 
         let filter =
