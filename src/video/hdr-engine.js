@@ -16,22 +16,23 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
     if (logMessage) logMessage(`🎨 Applying HDR quality boost...`, "info");
     
     try {
-        // ===== ĐỌC FILE VÀO BUFFER =====
+        // ===== ĐỌC FILE =====
         const originalBuffer = await file.arrayBuffer();
         const bytes = new Uint8Array(originalBuffer);
         const view = new DataView(originalBuffer);
         
-        // ===== INFLATE QUALITY (SỬA METADATA, NHANH) =====
-        if (logMessage) logMessage(`📦 Enhancing video metadata...`, "info");
+        // ===== UPDATE PROGRESS NHANH (KHÔNG LOOP) =====
         setProgress(30);
         await new Promise(r => setTimeout(r, 50));
         
+        // ===== INFLATE QUALITY =====
+        if (logMessage) logMessage(`📦 Enhancing video metadata...`, "info");
         const inflated = inflateQualityVideo(bytes, view, 2);
         
+        setProgress(80);
+        await new Promise(r => setTimeout(r, 50));
+        
         if (inflated) {
-            setProgress(80);
-            await new Promise(r => setTimeout(r, 50));
-            
             if (logMessage) logMessage(`✅ Quality enhancement applied!`, "success");
             setProgress(100);
             return { buffer: inflated.newBuffer, thumbnail: null };
@@ -43,6 +44,7 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
         
     } catch (err) {
         if (logMessage) logMessage(`❌ HDR Error: ${err.message}`, "error");
+        setProgress(0);
         throw err;
     }
 }
