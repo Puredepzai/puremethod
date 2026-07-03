@@ -461,6 +461,13 @@ export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
 
 // ===== TĂNG QUALITY (SỬA BITRATE, KHÔNG NHÂN FRAME) =====
 export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2) {
+    // Tạo bản sao y hệt file gốc
+    const newBuffer = new ArrayBuffer(inputBytes.length);
+    const newBytes = new Uint8Array(newBuffer);
+    const newView = new DataView(newBuffer);
+    newBytes.set(inputBytes);
+
+    // Tìm và sửa bitrate trong stsd box
     const fileSize = inputBytes.length;
     const topBoxes = parseBoxes(inputBytes, inputView, 0, fileSize);
     const moovBox = topBoxes.find((b) => b.type === "moov");
@@ -477,7 +484,6 @@ export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2
         stblBox.end,
     );
 
-    // ===== TĂNG BITRATE TRONG stsd BOX =====
     const stsdBox = stblChildren.find((b) => b.type === "stsd");
     if (stsdBox) {
         const contentStart = stsdBox.offset + getBoxHeaderSize(stsdBox);
@@ -485,15 +491,10 @@ export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2
             const bitratePos = contentStart + 20;
             const currentBitrate = inputView.getUint32(bitratePos, false);
             const newBitrate = Math.round(currentBitrate * qualityMultiplier);
-            inputView.setUint32(bitratePos, newBitrate, false);
+            // Sửa trực tiếp trên bản sao
+            newView.setUint32(bitratePos, newBitrate, false);
         }
     }
-
-    // ===== COPY TOÀN BỘ FILE (GIỮ NGUYÊN CẤU TRÚC) =====
-    const newBuffer = new ArrayBuffer(fileSize);
-    const newBytes = new Uint8Array(newBuffer);
-    const newView = new DataView(newBuffer);
-    newBytes.set(inputBytes);
 
     return { newBuffer, newBytes, newView };
 }
