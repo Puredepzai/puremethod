@@ -1576,9 +1576,21 @@ const tutorialModal = document.getElementById("tutorialModal");
 const closeTutorialModal = document.getElementById("closeTutorialModal");
 const tutorialUploadBtn = document.getElementById("tutorialUploadBtn");
 const tutorialPatchBtn = document.getElementById("tutorialPatchBtn");
-const tutorialVideoContainer = document.getElementById("tutorialVideoContainer");
 const tutorialPlaceholder = document.getElementById("tutorialPlaceholder");
 
+// Tạo container video nếu chưa có
+let tutorialVideoContainer = document.getElementById("tutorialVideoContainer");
+if (!tutorialVideoContainer) {
+    tutorialVideoContainer = document.createElement("div");
+    tutorialVideoContainer.id = "tutorialVideoContainer";
+    tutorialVideoContainer.style.display = "none";
+    const modalBody = document.querySelector(".modal-body");
+    if (modalBody) {
+        modalBody.appendChild(tutorialVideoContainer);
+    }
+}
+
+// Đóng modal
 if (tutorialModal) {
     closeTutorialModal.addEventListener("click", () => {
         tutorialModal.classList.remove("active");
@@ -1603,7 +1615,9 @@ if (tutorialModal) {
     });
 }
 
+// Phát video
 function playTutorialVideo(videoUrl) {
+    if (!tutorialVideoContainer) return;
     tutorialVideoContainer.innerHTML = `
         <iframe 
             src="${videoUrl}?autoplay=1&rel=0" 
@@ -1632,20 +1646,17 @@ if (tutorialPatchBtn) {
     });
 }
 
+// Nút mở modal
 const tiktokStudioBtn = document.getElementById("tiktokStudioBtn");
 if (tiktokStudioBtn && tutorialModal) {
     tiktokStudioBtn.addEventListener("click", (e) => {
         e.preventDefault();
         tutorialModal.classList.add("active");
         lockScroll();
-        tutorialVideoContainer.style.display = "none";
+        if (tutorialVideoContainer) {
+            tutorialVideoContainer.style.display = "none";
+            tutorialVideoContainer.innerHTML = "";
+        }
         tutorialPlaceholder.style.display = "block";
     });
-}
-
-initializeApp();
-
-const changelogContainer = document.getElementById("changelogContainer");
-if (changelogContainer) {
-    initChangelog(changelogContainer);
 }
