@@ -1,118 +1,99 @@
 import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
-import { inflateQualityVideo } from "./mp4-inflate.mjs";
-
-// ===== CẤU HÌNH =====
-const MIN_PROCESSING_TIME = 5;
-const MAX_PROCESSING_TIME = 15;
-const CHUNK_DURATION = 2;
-const MIN_CHUNK_SIZE_MB = 20;
 
 export async function runHDR(file, width, height, targetRes, isCancelled, logMessage, setProgress) {
     // ===== ĐỌC TRẠNG THÁI TỪ UI =====
     const enableHDRCheckbox = document.getElementById("enableHDR");
     const isHDR = enableHDRCheckbox ? enableHDRCheckbox.checked : false;
     
-    // ===== NẾU BẬT HDR: GHOST MODE + INFLATE QUALITY =====
+    // ===== NẾU BẬT HDR: TĂNG QUALITY BẰNG FFMPEG =====
     if (isHDR) {
-        if (logMessage) logMessage(`🎨 HDR QUALITY BOOST: Enhancing video quality...`, "info");
+        if (logMessage) logMessage(`🎨 Applying HDR quality boost...`, "info");
         
-        // ===== BƯỚC 1: FAKE PROGRESS (GIỐNG VFI) =====
-        const processingTime = Math.random() * (MAX_PROCESSING_TIME - MIN_PROCESSING_TIME) + MIN_PROCESSING_TIME;
-        if (logMessage) logMessage(`⏱️ Estimated processing time: ${Math.round(processingTime)}s`, "info");
+        let instance;
+        const ext = resolveInputExtension(file);
+        const inputName = `input${ext}`;
+        const outputName = "output.mp4";
         
-        const startTime = Date.now();
-        let p = 0;
-        while (p < 100) {
+        try {
             if (isCancelled?.()) throw new Error("Cancelled");
-            
-            if ((Date.now() - startTime) / 1000 > processingTime) {
-                if (logMessage) logMessage(`⏱️ Processing time (${Math.round(processingTime)}s) completed.`, "info");
-                break;
+            instance = await getFFmpeg(logMessage, setProgress);
+            if (isCancelled?.()) throw new Error("Cancelled");
+
+            try {
+                await instance.setMemoryLimit(2048 * 1024 * 1024);
+                if (logMessage) logMessage("🧠 Memory limit set to 2GB", "info");
+            } catch (_) {
+                if (logMessage) logMessage("⚠️ setMemoryLimit not supported", "warning");
             }
+
+            if (logMessage) logMessage("Preparing video data streams...", "info");
+            const fileData = await fetchFile(file);
+            await instance.writeFile(inputName, fileData);
+            if (isCancelled?.()) throw new Error("Cancelled");
+
+            // ===== FILTER TĂNG QUALITY =====
+            const filter =
+                "eq=brightness=0.30:contrast=1.50:saturation=1.30," +
+                "unsharp=7:7:1.5:7:7:0.8," +
+                "zscale=transfer=linear," +
+                "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
+                "format=yuv420p10le";
             
-            p += Math.random() * 8 + 2;
-            if (p > 100) p = 100;
-            try { setProgress(p); } catch (_) {}
-            await new Promise(r => setTimeout(r, 100));
-        }
-        
-        if (p < 100) {
-            p = 100;
-            try { setProgress(p); } catch (_) {}
-            await new Promise(r => setTimeout(r, 100));
-        }
-        
-        // ===== BƯỚC 2: INFLATE QUALITY (SỬA METADATA) =====
-        if (logMessage) logMessage(`📦 Applying quality enhancement...`, "info");
-        
-        const fileSizeMB = file.size / (1024 * 1024);
-        const useChunk = fileSizeMB > MIN_CHUNK_SIZE_MB;
-        
-        let finalBuffer = null;
-        
-        if (useChunk) {
-            // ===== CHUNK PROCESSING CHO FILE LỚN =====
-            if (logMessage) logMessage(`📦 File ${Math.round(fileSizeMB)}MB, using chunk processing...`, "info");
+            const scaleFilter = width > height 
+                ? `scale=-2:${targetRes}:flags=lanczos,${filter}`
+                : `scale=${targetRes}:-2:flags=lanczos,${filter}`;
+
+            const args = [
+                "-i", inputName,
+                "-vf", scaleFilter,
+                "-c:v", "libx265",
+                "-preset", "slow",
+                "-crf", "14",
+                "-maxrate", "50M",
+                "-bufsize", "100M",
+                "-pix_fmt", "yuv420p10le",
+                "-x265-params", "hdr10=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,50):max-cll=1000,400",
+                "-c:a", "copy",
+                "-video_track_timescale", "90000",
+                "-threads", "4",
+                outputName,
+            ];
             
-            const totalDuration = 30;
-            const numChunks = Math.ceil(totalDuration / CHUNK_DURATION);
-            let chunkBuffers = [];
-            
-            for (let i = 0; i < numChunks; i++) {
-                if (isCancelled?.()) throw new Error("Cancelled");
-                
-                // Cắt chunk từ file gốc (giả định)
-                const start = i * CHUNK_DURATION;
-                // Đọc chunk (cần implement đọc chunk từ file, tạm thời dùng toàn bộ)
-                const chunkData = await file.arrayBuffer();
-                const bytes = new Uint8Array(chunkData);
-                const view = new DataView(chunkData);
-                
-                const inflated = inflateQualityVideo(bytes, view, 2);
-                if (inflated) {
-                    chunkBuffers.push(inflated.newBuffer);
-                } else {
-                    chunkBuffers.push(chunkData);
-                }
-                
-                const totalProgress = Math.round(((i + 1) / numChunks) * 80);
-                try { setProgress(totalProgress); } catch (_) {}
+            if (logMessage) logMessage(`🔄 Encoding HDR (high quality)...`, "info");
+            setProgress(30);
+            await new Promise(r => setTimeout(r, 50));
+            const ret = await instance.exec(args);
+            if (ret !== 0 && ret !== undefined) {
+                throw new Error(`FFmpeg exited with code ${ret}`);
             }
+
+            setProgress(80);
+            await new Promise(r => setTimeout(r, 50));
             
-            // ===== GHÉP CHUNK =====
-            if (logMessage) logMessage(`🔗 Merging chunks...`, "info");
-            const totalSize = chunkBuffers.reduce((acc, buf) => acc + buf.byteLength, 0);
-            const merged = new Uint8Array(totalSize);
-            let offset = 0;
-            for (const buf of chunkBuffers) {
-                merged.set(new Uint8Array(buf), offset);
-                offset += buf.byteLength;
+            const data = await instance.readFile(outputName);
+            if (!data || data.byteLength < 100) {
+                throw new Error("FFmpeg produced an empty or invalid output file.");
             }
-            finalBuffer = merged.buffer;
+
+            const thumbnailBuffer = await extractThumbnailFromInstance(instance, outputName, logMessage);
+
+            setProgress(100);
+            if (logMessage) logMessage(`✅ HDR quality boost complete!`, "success");
+
+            return { buffer: data.buffer, thumbnail: thumbnailBuffer };
             
-        } else {
-            // ===== XỬ LÝ BÌNH THƯỜNG =====
-            const originalBuffer = await file.arrayBuffer();
-            const bytes = new Uint8Array(originalBuffer);
-            const view = new DataView(originalBuffer);
-            
-            const inflated = inflateQualityVideo(bytes, view, 2);
-            if (inflated) {
-                finalBuffer = inflated.newBuffer;
-            } else {
-                finalBuffer = originalBuffer;
+        } catch (err) {
+            if (logMessage) logMessage(`❌ HDR Error: ${err.message}`, "error");
+            await destroyFFmpegInstance();
+            throw err;
+        } finally {
+            if (instance) {
+                await instance.deleteFile(inputName).catch(() => {});
+                await instance.deleteFile(outputName).catch(() => {});
             }
-        }
-        
-        if (finalBuffer) {
-            if (logMessage) logMessage(`✅ Quality enhancement applied!`, "success");
-            return { buffer: finalBuffer, thumbnail: null };
-        } else {
-            if (logMessage) logMessage(`⚠️ Quality enhancement skipped, returning original file.`, "warning");
-            const originalBuffer = await file.arrayBuffer();
-            return { buffer: originalBuffer, thumbnail: null };
+            if (window.gc) try { window.gc(); } catch (_) {}
         }
     }
 
@@ -120,4 +101,4 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
     if (logMessage) logMessage(`ℹ️ HDR not enabled. Returning original file.`, "info");
     const originalBuffer = await file.arrayBuffer();
     return { buffer: originalBuffer, thumbnail: null };
-}
+}o
