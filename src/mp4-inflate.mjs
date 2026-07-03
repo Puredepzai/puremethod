@@ -458,9 +458,41 @@ export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
     return { newBuffer, newBytes, newView };
 }
 
-// ===== HÀM TĂNG QUALITY (GIỐNG INFLATE FRAME NHƯNG KHÔNG NHÂN FRAME) =====
+// ===== HÀM TĂNG QUALITY (SỬA METADATA) =====
 export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2) {
-    // Dùng inflateSampleTableVideo với multiplier = 1 (không nhân frame)
-    // nhưng sửa bitrate/color depth trong tương lai
-    return inflateSampleTableVideo(inputBytes, inputView, 1);
+    const fileSize = inputBytes.length;
+    const topBoxes = parseBoxes(inputBytes, inputView, 0, fileSize);
+    const moovBox = topBoxes.find((b) => b.type === "moov");
+    if (!moovBox) return null;
+
+    const located = findVideoStbl(inputBytes, inputView, moovBox);
+    if (!located) return null;
+
+    const { stblBox } = located;
+    const stblChildren = parseBoxes(
+        inputBytes,
+        inputView,
+        stblBox.offset + getBoxHeaderSize(stblBox),
+        stblBox.end,
+    );
+
+    // ===== TĂNG BITRATE (SỬA stsd BOX) =====
+    const stsdBox = stblChildren.find((b) => b.type === "stsd");
+    if (stsdBox) {
+        const contentStart = stsdBox.offset + getBoxHeaderSize(stsdBox);
+        if (contentStart + 80 <= stsdBox.end) {
+            const bitratePos = contentStart + 20;
+            const currentBitrate = inputView.getUint32(bitratePos, false);
+            const newBitrate = Math.round(currentBitrate * qualityMultiplier);
+            inputView.setUint32(bitratePos, newBitrate, false);
+        }
+    }
+
+    // ===== COPY TOÀN BỘ FILE VỚI METADATA MỚI =====
+    const newBuffer = new ArrayBuffer(fileSize);
+    const newBytes = new Uint8Array(newBuffer);
+    const newView = new DataView(newBuffer);
+    newBytes.set(inputBytes);
+
+    return { newBuffer, newBytes, newView };
 }
