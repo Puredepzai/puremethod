@@ -1,16 +1,20 @@
+import { fetchFile } from "@ffmpeg/util";
+import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
+import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
+
 // ===== CẤU HÌNH =====
 const CHUNK_DURATION = 2;
 const MIN_CHUNK_SIZE_MB = 20;
-const MIN_PROCESSING_TIME = 5;  // 5 giây tối thiểu
-const MAX_PROCESSING_TIME = 15; // 15 giây tối đa
+const MIN_PROCESSING_TIME = 5;
+const MAX_PROCESSING_TIME = 15;
 
 export async function runVFI(file, width, height, targetRes, applyHDR, isCancelled, logMessage, setProgress, enableTurbo = false, targetFPS = 120) {
     // ===== ĐỌC TRẠNG THÁI TỪ UI =====
     const enableInterpolation = document.getElementById("enableInterpolation");
-    const FPS_INTERPOLATION = enableInterpolation ? enableInterpolation.checked : false;
+    const isFPSEnabled = enableInterpolation ? enableInterpolation.checked : false;
     
     // ===== FPS INTERPOLATION (GHOST MODE) =====
-    if (FPS_INTERPOLATION) {
+    if (isFPSEnabled) {
         if (logMessage) logMessage(`🎞️ FPS INTERPOLATION: Simulating ${targetFPS}fps processing...`, "info");
         
         const processingTime = Math.random() * (MAX_PROCESSING_TIME - MIN_PROCESSING_TIME) + MIN_PROCESSING_TIME;
@@ -79,18 +83,20 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
 
         if (logMessage) logMessage(`⚙️ Mode: ${enableTurbo ? "TURBO" : "QUALITY"} | FPS: ${targetFPS}`, "info");
 
-        let filter;
+        // ===== FILTER: CHỈ THÊM FPS KHI BẬT INTERPOLATION =====
+        let filter = "";
+        
+        // Nếu bật HDR, thêm filter HDR
         if (applyHDR) {
-            filter =
-                `fps=${targetFPS},` +
-                "eq=brightness=0.15:contrast=1.20," +
-                "zscale=transfer=linear," +
-                "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
-                "format=yuv420p10le";
-        } else {
-            filter = `fps=${targetFPS}`;
+            filter = "eq=brightness=0.15:contrast=1.20,zscale=transfer=linear,zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc,format=yuv420p10le";
         }
         
+        // Nếu bật FPS (checkbox), thêm fps filter vào đầu
+        if (isFPSEnabled) {
+            filter = filter ? `fps=${targetFPS},${filter}` : `fps=${targetFPS}`;
+        }
+        
+        // Scale
         if (width > height) {
             filter = `scale=-2:${targetRes},${filter}`;
         } else {
@@ -100,7 +106,6 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         const fileSizeMB = file.size / (1024 * 1024);
         const useChunk = fileSizeMB > MIN_CHUNK_SIZE_MB;
 
-        // ===== CHUNK PROCESSING =====
         if (useChunk) {
             if (logMessage) logMessage(`📦 File ${Math.round(fileSizeMB)}MB, using chunk processing...`, "info");
             
@@ -118,9 +123,13 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 
                 await instance.exec(["-i", inputName, "-ss", String(start), "-t", String(CHUNK_DURATION), "-c", "copy", chunkInput]);
                 
-                const chunkFilter = applyHDR ? 
-                    `fps=${targetFPS},eq=brightness=0.15:contrast=1.20,zscale=transfer=linear,zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc,format=yuv420p10le` :
-                    `fps=${targetFPS}`;
+                let chunkFilter = "";
+                if (applyHDR) {
+                    chunkFilter = "eq=brightness=0.15:contrast=1.20,zscale=transfer=linear,zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc,format=yuv420p10le";
+                }
+                if (isFPSEnabled) {
+                    chunkFilter = chunkFilter ? `fps=${targetFPS},${chunkFilter}` : `fps=${targetFPS}`;
+                }
                 
                 const processArgs = [
                     "-i", chunkInput,
