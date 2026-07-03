@@ -2,53 +2,11 @@ import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 
-// ===== CẤU HÌNH =====
+// ===== CẤU HÌNH CHẤT LƯỢNG CAO =====
 const CHUNK_DURATION = 2;
 const MIN_CHUNK_SIZE_MB = 20;
-const MIN_PROCESSING_TIME = 5;
-const MAX_PROCESSING_TIME = 15;
 
 export async function runHDR(file, width, height, targetRes, isCancelled, logMessage, setProgress) {
-    // ===== ĐỌC TRẠNG THÁI TỪ UI =====
-    const enableHDRCheckbox = document.getElementById("enableHDR");
-    const isHDR = enableHDRCheckbox ? enableHDRCheckbox.checked : false;
-    
-    // ===== GHOST MODE (GIỐNG VFI, NHƯNG KHÔNG TĂNG FPS) =====
-    if (isHDR) {
-        if (logMessage) logMessage(`🎨 HDR QUALITY BOOST: Simulating HDR processing...`, "info");
-        
-        const processingTime = Math.random() * (MAX_PROCESSING_TIME - MIN_PROCESSING_TIME) + MIN_PROCESSING_TIME;
-        if (logMessage) logMessage(`⏱️ Estimated processing time: ${Math.round(processingTime)}s`, "info");
-        
-        const startTime = Date.now();
-        let p = 0;
-        while (p < 100) {
-            if (isCancelled?.()) throw new Error("Cancelled");
-            
-            if ((Date.now() - startTime) / 1000 > processingTime) {
-                if (logMessage) logMessage(`⏱️ Processing time (${Math.round(processingTime)}s) completed.`, "info");
-                break;
-            }
-            
-            p += Math.random() * 8 + 2;
-            if (p > 100) p = 100;
-            try { setProgress(p); } catch (_) {}
-            await new Promise(r => setTimeout(r, 100));
-        }
-        
-        if (p < 100) {
-            p = 100;
-            try { setProgress(p); } catch (_) {}
-            await new Promise(r => setTimeout(r, 100));
-        }
-        
-        if (logMessage) logMessage(`✅ HDR Quality Boost complete! (CRF 15, slow preset)`, "success");
-        
-        const originalBuffer = await file.arrayBuffer();
-        return { buffer: originalBuffer, thumbnail: null };
-    }
-
-    // ===== REAL PROCESSING (xử lý thật nếu cần) =====
     let instance;
     const ext = resolveInputExtension(file);
     const inputName = `input${ext}`;
@@ -78,10 +36,10 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
         await instance.writeFile(inputName, fileData);
         if (isCancelled?.()) throw new Error("Cancelled");
 
-        // ===== FILTER TỐI ƯU CHẤT LƯỢNG (NHƯNG KHÔNG FPS) =====
+        // ===== FILTER CHẤT LƯỢNG CAO (TĂNG GẤP ĐÔI) =====
         let filter =
-            "eq=brightness=0.25:contrast=1.40:saturation=1.20," +
-            "unsharp=5:5:1.2:5:5:0.6," +
+            "eq=brightness=0.30:contrast=1.50:saturation=1.30," +
+            "unsharp=7:7:1.5:7:7:0.8," +
             "zscale=transfer=linear," +
             "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
             "format=yuv420p10le";
@@ -95,6 +53,7 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
         const fileSizeMB = file.size / (1024 * 1024);
         const useChunk = fileSizeMB > MIN_CHUNK_SIZE_MB;
 
+        // ===== CHUNK PROCESSING =====
         if (useChunk) {
             if (logMessage) logMessage(`📦 File ${Math.round(fileSizeMB)}MB, using chunk processing...`, "info");
             
@@ -113,8 +72,8 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
                 await instance.exec(["-i", inputName, "-ss", String(start), "-t", String(CHUNK_DURATION), "-c", "copy", chunkInput]);
                 
                 const chunkFilter =
-                    "eq=brightness=0.25:contrast=1.40:saturation=1.20," +
-                    "unsharp=5:5:1.2:5:5:0.6," +
+                    "eq=brightness=0.30:contrast=1.50:saturation=1.30," +
+                    "unsharp=7:7:1.5:7:7:0.8," +
                     "zscale=transfer=linear," +
                     "zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc," +
                     "format=yuv420p10le";
@@ -124,9 +83,9 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
                     "-vf", chunkFilter,
                     "-c:v", "libx265",
                     "-preset", "slow",
-                    "-crf", "15",
-                    "-maxrate", "35M",
-                    "-bufsize", "70M",
+                    "-crf", "14",
+                    "-maxrate", "50M",
+                    "-bufsize", "100M",
                     "-pix_fmt", "yuv420p10le",
                     "-x265-params", "hdr10=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,50):max-cll=1000,400",
                     "-c:a", "copy",
@@ -161,14 +120,15 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
             await instance.deleteFile("concat.txt").catch(() => {});
             
         } else {
+            // ===== XỬ LÝ THƯỜNG (KHÔNG CHUNK) =====
             const args = [
                 "-i", inputName,
                 "-vf", filter,
                 "-c:v", "libx265",
                 "-preset", "slow",
-                "-crf", "15",
-                "-maxrate", "35M",
-                "-bufsize", "70M",
+                "-crf", "14",
+                "-maxrate", "50M",
+                "-bufsize", "100M",
                 "-pix_fmt", "yuv420p10le",
                 "-x265-params", "hdr10=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,50):max-cll=1000,400",
                 "-c:a", "copy",
@@ -177,7 +137,7 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
                 outputName,
             ];
             
-            if (logMessage) logMessage(`🔄 Encoding HDR (high quality mode)...`, "info");
+            if (logMessage) logMessage(`🔄 Encoding HDR (max quality)...`, "info");
             debouncedSetProgress(30);
             await new Promise(r => setTimeout(r, 50));
             const ret = await instance.exec(args);
@@ -197,7 +157,7 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
         const thumbnailBuffer = await extractThumbnailFromInstance(instance, outputName, logMessage);
 
         debouncedSetProgress(100);
-        if (logMessage) logMessage(`✅ HDR conversion complete! (CRF 15, slow preset)`, "success");
+        if (logMessage) logMessage(`✅ HDR quality boost complete! (CRF 14, slow preset, 50M bitrate)`, "success");
 
         return { buffer: data.buffer, thumbnail: thumbnailBuffer };
         
