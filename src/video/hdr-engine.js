@@ -21,11 +21,11 @@ export async function runHDR(file, width, height, targetRes, isCancelled, logMes
         const bytes = new Uint8Array(originalBuffer);
         const view = new DataView(originalBuffer);
         
-        // ===== UPDATE PROGRESS NHANH (KHÔNG LOOP) =====
+        // ===== UPDATE PROGRESS =====
         setProgress(30);
         await new Promise(r => setTimeout(r, 50));
         
-        // ===== INFLATE QUALITY =====
+        // ===== INFLATE QUALITY (NHANH) =====
         if (logMessage) logMessage(`📦 Enhancing video metadata...`, "info");
         const inflated = inflateQualityVideo(bytes, view, 2);
         
