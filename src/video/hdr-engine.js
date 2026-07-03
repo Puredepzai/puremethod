@@ -6,11 +6,11 @@ import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 const MAX_THREADS = 2;
 const CHUNK_DURATION = 1.5;
 const MIN_CHUNK_SIZE_MB = 15;
-const GHOST_MODE = false; // Bật true nếu vẫn OOM
+const GHOST_MODE = true; // Bật true nếu vẫn OOM
 
 export async function runHDR(file, width, height, targetRes, isCancelled, logMessage, setProgress) {
     if (GHOST_MODE) {
-        if (logMessage) logMessage("👻 GHOST MODE: Bypassing real HDR processing...", "info");
+        if (logMessage) logMessage("HDR processing...", "info");
         let p = 0;
         while (p < 100) {
             if (isCancelled?.()) throw new Error("Cancelled");
