@@ -260,7 +260,6 @@ function buildStscPatch(inputBytes, inputView, stscBox, origStcoCount) {
     return b;
 }
 
-// ===== TĂNG FPS (NHÂN FRAME) =====
 export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
     const fileSize = inputBytes.length;
     const topBoxes = parseBoxes(inputBytes, inputView, 0, fileSize);
@@ -459,7 +458,7 @@ export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
     return { newBuffer, newBytes, newView };
 }
 
-// ===== TĂNG QUALITY (SỬA BITRATE, KHÔNG NHÂN FRAME) =====
+// ===== HÀM TĂNG QUALITY (SỬA METADATA) =====
 export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2) {
     const fileSize = inputBytes.length;
     const topBoxes = parseBoxes(inputBytes, inputView, 0, fileSize);
@@ -477,7 +476,7 @@ export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2
         stblBox.end,
     );
 
-    // ===== TĂNG BITRATE TRONG stsd BOX =====
+    // ===== TĂNG BITRATE (SỬA stsd BOX) =====
     const stsdBox = stblChildren.find((b) => b.type === "stsd");
     if (stsdBox) {
         const contentStart = stsdBox.offset + getBoxHeaderSize(stsdBox);
@@ -489,7 +488,7 @@ export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2
         }
     }
 
-    // ===== COPY TOÀN BỘ FILE (GIỮ NGUYÊN CẤU TRÚC) =====
+    // ===== COPY TOÀN BỘ FILE VỚI METADATA MỚI =====
     const newBuffer = new ArrayBuffer(fileSize);
     const newBytes = new Uint8Array(newBuffer);
     const newView = new DataView(newBuffer);
