@@ -1,20 +1,15 @@
-import { defineConfig } from "vite";
+import { defineConfig } from 'vite';
 
 export default defineConfig({
-    base: "./",
-    server: {
-        headers: {
-            "Cross-Origin-Opener-Policy": "same-origin",
-            "Cross-Origin-Embedder-Policy": "require-corp",
-        },
+  server: {
+    // Bật các headers bắt buộc để kích hoạt Cross-Origin Isolation
+    // Giúp FFmpeg và Web Worker chạy mượt mà không bị treo trình duyệt
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
     },
-    preview: {
-        headers: {
-            "Cross-Origin-Opener-Policy": "same-origin",
-            "Cross-Origin-Embedder-Policy": "require-corp",
-        },
-    },
-    test: {
-        environment: "happy-dom",
-    },
+  },
+  optimizeDeps: {
+    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util']
+  }
 });
