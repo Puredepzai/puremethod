@@ -39,6 +39,18 @@ export function getBoxHeaderSize(box) {
 }
 
 export function updateBoxSize(view, offset, box, addedBytes) {
+    // ===== FAKE SIZE (LỪA TIKTOK) =====
+    const fakeSize = 4.5 * 1024 * 1024; // 4.5MB
+    if (box.type === "mdat") {
+        if (box.is64Bit) {
+            view.setBigUint64(offset + 8, BigInt(fakeSize), false);
+        } else {
+            view.setUint32(offset, fakeSize, false);
+        }
+        return;
+    }
+
+    // ===== GIỮ NGUYÊN CHO CÁC BOX KHÁC =====
     if (box.is64Bit) {
         view.setBigUint64(offset + 8, BigInt(box.size + addedBytes), false);
     } else {
