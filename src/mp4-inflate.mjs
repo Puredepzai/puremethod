@@ -260,7 +260,6 @@ function buildStscPatch(inputBytes, inputView, stscBox, origStcoCount) {
     return b;
 }
 
-// ===== TĂNG FPS (NHÂN FRAME) =====
 export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
     const fileSize = inputBytes.length;
     const topBoxes = parseBoxes(inputBytes, inputView, 0, fileSize);
@@ -452,56 +451,6 @@ export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
             }
         }
     }
-
-    return { newBuffer, newBytes, newView };
-}
-
-// ===== TĂNG QUALITY (SỬA BITRATE) =====
-export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2) {
-    const fileSize = inputBytes.length;
-    const topBoxes = parseBoxes(inputBytes, inputView, 0, fileSize);
-    const moovBox = topBoxes.find((b) => b.type === "moov");
-    if (!moovBox) return null;
-
-    const located = findVideoStbl(inputBytes, inputView, moovBox);
-    if (!located) return null;
-
-    const { stblBox } = located;
-    const stblChildren = parseBoxes(
-        inputBytes,
-        inputView,
-        stblBox.offset + getBoxHeaderSize(stblBox),
-        stblBox.end,
-    );
-
-    // ===== TĂNG BITRATE (QUALITY) =====
-    const stsdBox = stblChildren.find((b) => b.type === "stsd");
-    if (stsdBox) {
-        const contentStart = stsdBox.offset + getBoxHeaderSize(stsdBox);
-        if (contentStart + 80 <= stsdBox.end) {
-            const bitratePos = contentStart + 20;
-            const currentBitrate = inputView.getUint32(bitratePos, false);
-            const newBitrate = Math.round(currentBitrate * qualityMultiplier);
-            inputView.setUint32(bitratePos, newBitrate, false);
-        }
-    }
-
-    // ===== FAKE FILE SIZE (LỪA TIKTOK) =====
-    const fakeSize = 4.5 * 1024 * 1024; // 4.5MB
-    const mdatBox = topBoxes.find((b) => b.type === "mdat");
-    if (mdatBox) {
-        if (mdatBox.is64Bit) {
-            inputView.setBigUint64(mdatBox.offset + 8, BigInt(fakeSize), false);
-        } else {
-            inputView.setUint32(mdatBox.offset, fakeSize, false);
-        }
-    }
-
-    // ===== COPY FILE =====
-    const newBuffer = new ArrayBuffer(fileSize);
-    const newBytes = new Uint8Array(newBuffer);
-    const newView = new DataView(newBuffer);
-    newBytes.set(inputBytes);
 
     return { newBuffer, newBytes, newView };
 }
