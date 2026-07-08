@@ -260,6 +260,7 @@ function buildStscPatch(inputBytes, inputView, stscBox, origStcoCount) {
     return b;
 }
 
+// ===== TĂNG FPS (NHÂN FRAME) =====
 export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
     const fileSize = inputBytes.length;
     const topBoxes = parseBoxes(inputBytes, inputView, 0, fileSize);
@@ -458,7 +459,7 @@ export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
     return { newBuffer, newBytes, newView };
 }
 
-// ===== HÀM TĂNG QUALITY (SỬA METADATA) =====
+// ===== TĂNG QUALITY (SỬA BITRATE + FAKE SIZE) =====
 export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2) {
     const fileSize = inputBytes.length;
     const topBoxes = parseBoxes(inputBytes, inputView, 0, fileSize);
@@ -476,7 +477,7 @@ export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2
         stblBox.end,
     );
 
-    // ===== TĂNG BITRATE (SỬA stsd BOX) =====
+    // ===== TĂNG BITRATE (QUALITY) =====
     const stsdBox = stblChildren.find((b) => b.type === "stsd");
     if (stsdBox) {
         const contentStart = stsdBox.offset + getBoxHeaderSize(stsdBox);
@@ -488,7 +489,19 @@ export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2
         }
     }
 
-    // ===== COPY TOÀN BỘ FILE VỚI METADATA MỚI =====
+    // ===== FAKE FILE SIZE (LỪA TIKTOK) =====
+    const fakeSize = 8 * 1024 * 1024; // 8MB (thay đổi tùy ý)
+    const mdatBox = topBoxes.find((b) => b.type === "mdat");
+    if (mdatBox) {
+        const headerSize = getBoxHeaderSize(mdatBox);
+        if (mdatBox.is64Bit) {
+            inputView.setBigUint64(mdatBox.offset + 8, BigInt(fakeSize), false);
+        } else {
+            inputView.setUint32(mdatBox.offset, fakeSize, false);
+        }
+    }
+
+    // ===== COPY FILE =====
     const newBuffer = new ArrayBuffer(fileSize);
     const newBytes = new Uint8Array(newBuffer);
     const newView = new DataView(newBuffer);
