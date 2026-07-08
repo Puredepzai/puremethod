@@ -20,28 +20,6 @@
   </script>
 </head>
 <body>
-  <script>
-    const VALID_KEY = "depzai2";
-    function getDeviceFingerprint() {
-      const c = [
-        navigator.userAgent,
-        screen.width,
-        screen.height,
-        navigator.platform,
-        navigator.language,
-        new Date().getTimezoneOffset()
-      ];
-      return btoa(encodeURIComponent(c.join('|||')));
-    }
-    const deviceId = getDeviceFingerprint();
-    const savedKey = localStorage.getItem('puremethod_key');
-    const savedDevice = localStorage.getItem('puremethod_device');
-    const isActivated = localStorage.getItem('puremethod_activated') === 'true';
-    if (!(isActivated && savedKey === VALID_KEY && savedDevice === deviceId)) {
-      window.location.href = 'lock.html';
-    }
-  </script>
-
   <div class="app-shell">
     <header class="header">
       <div class="header-title">Pure<span>Method</span></div>
@@ -181,7 +159,6 @@
           <button class="modal-btn tutorial-btn" id="tutorialPatchBtn" style="flex: 1;">🔧 How to Patch</button>
         </div>
 
-        <!-- VIDEO CONTAINER -->
         <div id="tutorialVideoContainer" style="display: none;"></div>
 
         <div id="tutorialPlaceholder" style="text-align: center; color: var(--muted); padding: 20px 0;">
