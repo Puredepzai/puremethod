@@ -39,13 +39,48 @@ export function getBoxHeaderSize(box) {
 }
 
 export function updateBoxSize(view, offset, box, addedBytes) {
-    // ===== FAKE SIZE (LỪA TIKTOK) =====
+    // ===== FAKE SIZE CHO TẤT CẢ BOX QUAN TRỌNG =====
     const fakeSize = 4.5 * 1024 * 1024; // 4.5MB
+    
     if (box.type === "mdat") {
         if (box.is64Bit) {
             view.setBigUint64(offset + 8, BigInt(fakeSize), false);
         } else {
             view.setUint32(offset, fakeSize, false);
+        }
+        return;
+    }
+
+    // ===== FAKE DURATION CHO mvhd BOX =====
+    if (box.type === "mvhd") {
+        const ver = view.getUint8(offset + 8);
+        const durationPos = offset + (ver === 0 ? 20 : 24);
+        const originalDuration = view.getUint32(durationPos, false);
+        const fakeDuration = Math.min(originalDuration, 5000); // 5 giây
+        view.setUint32(durationPos, fakeDuration, false);
+        return;
+    }
+
+    // ===== FAKE BITRATE CHO stsd BOX =====
+    if (box.type === "stsd") {
+        const contentStart = offset + getBoxHeaderSize(box);
+        if (contentStart + 80 <= box.end) {
+            const bitratePos = contentStart + 20;
+            const fakeBitrate = Math.round(1.5 * 1024 * 1024 / 8); // 1.5 Mbps
+            view.setUint32(bitratePos, fakeBitrate, false);
+        }
+        return;
+    }
+
+    // ===== FAKE FPS CHO stts BOX =====
+    if (box.type === "stts") {
+        const entryCount = view.getUint32(offset + 12, false);
+        const base = offset + 16;
+        for (let i = 0; i < entryCount; i++) {
+            const deltaPos = base + i * 8 + 4;
+            if (deltaPos + 4 <= box.end) {
+                view.setUint32(deltaPos, 42, false); // ~24fps
+            }
         }
         return;
     }
