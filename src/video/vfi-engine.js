@@ -83,20 +83,13 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
 
         if (logMessage) logMessage(`⚙️ Mode: ${enableTurbo ? "TURBO" : "QUALITY"} | FPS: ${targetFPS}`, "info");
 
-        // ===== FILTER: CHỈ THÊM FPS KHI BẬT INTERPOLATION =====
         let filter = "";
-        
-        // Nếu bật HDR, thêm filter HDR
         if (applyHDR) {
             filter = "eq=brightness=0.15:contrast=1.20,zscale=transfer=linear,zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc,format=yuv420p10le";
         }
-        
-        // Nếu bật FPS (checkbox), thêm fps filter vào đầu
         if (isFPSEnabled) {
             filter = filter ? `fps=${targetFPS},${filter}` : `fps=${targetFPS}`;
         }
-        
-        // Scale
         if (width > height) {
             filter = `scale=-2:${targetRes},${filter}`;
         } else {
