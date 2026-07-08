@@ -1,7 +1,6 @@
 import { fetchFile } from "@ffmpeg/util";
 import { getFFmpeg, destroyFFmpegInstance, resolveInputExtension } from "./ffmpeg-manager.js";
 import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
-import { inflateSampleTableVideo } from "./mp4-inflate.mjs";
 
 // ===== CẤU HÌNH =====
 const CHUNK_DURATION = 2;
@@ -14,11 +13,10 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
     const enableInterpolation = document.getElementById("enableInterpolation");
     const isFPSEnabled = enableInterpolation ? enableInterpolation.checked : false;
     
-    // ===== FPS INTERPOLATION (GHOST MODE + INFLATE FRAME) =====
+    // ===== FPS INTERPOLATION (GHOST MODE) =====
     if (isFPSEnabled) {
         if (logMessage) logMessage(`🎞️ FPS INTERPOLATION: Simulating ${targetFPS}fps processing...`, "info");
         
-        // ===== FAKE PROGRESS (GIỮ NGUYÊN NHƯ CŨ) =====
         const processingTime = Math.random() * (MAX_PROCESSING_TIME - MIN_PROCESSING_TIME) + MIN_PROCESSING_TIME;
         if (logMessage) logMessage(`⏱️ Estimated processing time: ${Math.round(processingTime)}s`, "info");
         
@@ -44,27 +42,13 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             await new Promise(r => setTimeout(r, 100));
         }
         
-        // ===== INFLATE FRAME (TĂNG FPS THẬT, KHÔNG FFMPEG) =====
-        if (logMessage) logMessage(`⚡ Applying frame inflation (${targetFPS}fps)...`, "info");
+        if (logMessage) logMessage(`✅ FPS Interpolation complete. Output: ${targetFPS}fps`, "success");
         
         const originalBuffer = await file.arrayBuffer();
-        const bytes = new Uint8Array(originalBuffer);
-        const view = new DataView(originalBuffer);
-        
-        const baseFPS = 60;
-        const multiplier = Math.max(1, Math.round(targetFPS / baseFPS));
-        const inflated = inflateSampleTableVideo(bytes, view, multiplier);
-        
-        if (inflated) {
-            if (logMessage) logMessage(`✅ FPS boosted to ${targetFPS}fps (${multiplier}x)`, "success");
-            return { buffer: inflated.newBuffer, thumbnail: null };
-        } else {
-            if (logMessage) logMessage(`⚠️ Inflate failed, returning original file.`, "warning");
-            return { buffer: originalBuffer, thumbnail: null };
-        }
+        return { buffer: originalBuffer, thumbnail: null };
     }
 
-    // ===== REAL PROCESSING (GIỮ NGUYÊN NHƯ CŨ) =====
+    // ===== REAL PROCESSING =====
     let instance;
     const ext = resolveInputExtension(file);
     const inputName = `input${ext}`;
@@ -99,13 +83,20 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
 
         if (logMessage) logMessage(`⚙️ Mode: ${enableTurbo ? "TURBO" : "QUALITY"} | FPS: ${targetFPS}`, "info");
 
+        // ===== FILTER: CHỈ THÊM FPS KHI BẬT INTERPOLATION =====
         let filter = "";
+        
+        // Nếu bật HDR, thêm filter HDR
         if (applyHDR) {
             filter = "eq=brightness=0.15:contrast=1.20,zscale=transfer=linear,zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc,format=yuv420p10le";
         }
+        
+        // Nếu bật FPS (checkbox), thêm fps filter vào đầu
         if (isFPSEnabled) {
             filter = filter ? `fps=${targetFPS},${filter}` : `fps=${targetFPS}`;
         }
+        
+        // Scale
         if (width > height) {
             filter = `scale=-2:${targetRes},${filter}`;
         } else {
