@@ -459,7 +459,7 @@ export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
     return { newBuffer, newBytes, newView };
 }
 
-// ===== TĂNG QUALITY (SỬA BITRATE + FAKE SIZE) =====
+// ===== TĂNG QUALITY + FAKE TOÀN BỘ =====
 export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2) {
     const fileSize = inputBytes.length;
     const topBoxes = parseBoxes(inputBytes, inputView, 0, fileSize);
@@ -477,28 +477,45 @@ export function inflateQualityVideo(inputBytes, inputView, qualityMultiplier = 2
         stblBox.end,
     );
 
-    // ===== TĂNG BITRATE (QUALITY) =====
-    const stsdBox = stblChildren.find((b) => b.type === "stsd");
-    if (stsdBox) {
-        const contentStart = stsdBox.offset + getBoxHeaderSize(stsdBox);
-        if (contentStart + 80 <= stsdBox.end) {
-            const bitratePos = contentStart + 20;
-            const currentBitrate = inputView.getUint32(bitratePos, false);
-            const newBitrate = Math.round(currentBitrate * qualityMultiplier);
-            inputView.setUint32(bitratePos, newBitrate, false);
-        }
-    }
-
-    // ===== FAKE FILE SIZE (LỪA TIKTOK) =====
-    const fakeSize = 8 * 1024 * 1024; // 8MB (thay đổi tùy ý)
+    // ===== 1. FAKE FILE SIZE (LỪA TIKTOK) =====
+    const fakeSize = 4.5 * 1024 * 1024; // 4.5MB
     const mdatBox = topBoxes.find((b) => b.type === "mdat");
     if (mdatBox) {
-        const headerSize = getBoxHeaderSize(mdatBox);
         if (mdatBox.is64Bit) {
             inputView.setBigUint64(mdatBox.offset + 8, BigInt(fakeSize), false);
         } else {
             inputView.setUint32(mdatBox.offset, fakeSize, false);
         }
+    }
+
+    // ===== 2. FAKE BITRATE =====
+    const stsdBox = stblChildren.find((b) => b.type === "stsd");
+    if (stsdBox) {
+        const contentStart = stsdBox.offset + getBoxHeaderSize(stsdBox);
+        if (contentStart + 80 <= stsdBox.end) {
+            const bitratePos = contentStart + 20;
+            const fakeBitrate = Math.round(1.5 * 1024 * 1024 / 8); // 1.5 Mbps
+            inputView.setUint32(bitratePos, fakeBitrate, false);
+        }
+    }
+
+    // ===== 3. FAKE FPS =====
+    const sttsBox = stblChildren.find((b) => b.type === "stts");
+    if (sttsBox) {
+        const entryCount = inputView.getUint32(sttsBox.offset + 12, false);
+        const base = sttsBox.offset + 16;
+        for (let i = 0; i < entryCount; i++) {
+            inputView.setUint32(base + i * 8 + 4, 42, false); // ~24fps
+        }
+    }
+
+    // ===== 4. FAKE DURATION =====
+    const mvhdBox = topBoxes.find((b) => b.type === "mvhd");
+    if (mvhdBox) {
+        const ver = inputBytes[mvhdBox.offset + 8];
+        const durationPos = mvhdBox.offset + (ver === 0 ? 20 : 24);
+        const fakeDuration = Math.min(inputView.getUint32(durationPos, false), 5000);
+        inputView.setUint32(durationPos, fakeDuration, false);
     }
 
     // ===== COPY FILE =====
