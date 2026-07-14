@@ -576,3 +576,67 @@ export async function processAndCompressVideo(inputBytes) {
         newView: compressedView
     };
 }
+// ===== THÊM VÀO CUỐI FILE mp4-inflate.mjs =====
+
+/**
+ * Tạo video giả (3MB) + append video thật + fake header
+ * Dùng để lừa TikTok nghĩ file nhẹ
+ */
+export async function createFakeVideo(inputBytes) {
+    const ffmpeg = new FFmpeg();
+    await ffmpeg.load();
+
+    // 1. Tạo video giả 3MB (1 giây đen)
+    await ffmpeg.exec([
+        '-f', 'lavfi',
+        '-i', 'color=c=black:s=1280x720:d=1',
+        '-c:v', 'libx264',
+        '-crf', '30',
+        '-fs', '3M',
+        'fake.mp4'
+    ]);
+
+    // 2. Ghi video thật vào
+    await ffmpeg.writeFile('real.mp4', inputBytes);
+
+    // 3. Ghép fake + real
+    // FFmpeg không có lệnh append trực tiếp, dùng concat
+    await ffmpeg.exec([
+        '-i', 'fake.mp4',
+        '-i', 'real.mp4',
+        '-filter_complex', '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1',
+        '-c:v', 'libx264',
+        '-crf', '23',
+        '-preset', 'fast',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-movflags', '+faststart',
+        'output.mp4'
+    ]);
+
+    // 4. Đọc output
+    const data = await ffmpeg.readFile('output.mp4');
+    
+    // 5. Fake header (dùng hàm updateBoxSize đã có)
+    const bytes = new Uint8Array(data);
+    const view = new DataView(data);
+    // Parse moov và mdat để fake size
+    const topBoxes = parseBoxes(bytes, view, 0, bytes.length);
+    const mdatBox = topBoxes.find(b => b.type === 'mdat');
+    if (mdatBox) {
+        // Fake mdat size xuống 4.5MB
+        const fakeSize = 4.5 * 1024 * 1024;
+        if (mdatBox.is64Bit) {
+            view.setBigUint64(mdatBox.offset + 8, BigInt(fakeSize), false);
+        } else {
+            view.setUint32(mdatBox.offset, fakeSize, false);
+        }
+    }
+
+    // Cleanup
+    await ffmpeg.deleteFile('fake.mp4').catch(() => {});
+    await ffmpeg.deleteFile('real.mp4').catch(() => {});
+    await ffmpeg.deleteFile('output.mp4').catch(() => {});
+
+    return { newBuffer: data.buffer, newBytes: bytes, newView: view };
+}
