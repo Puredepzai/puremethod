@@ -25,7 +25,12 @@ import {
     updateBoxSize,
     updateChunkOffsets,
 } from "./src/mp4-boxes.mjs";
-import { inflateSampleTableVideo, inflateQualityVideo, processAndCompressVideo } from "./src/mp4-inflate.mjs";
+import { 
+    inflateSampleTableVideo, 
+    inflateQualityVideo, 
+    processAndCompressVideo,
+    compressVideoUnder20MB 
+} from "./src/mp4-inflate.mjs";
 import {
     runVFI,
     runHDR,
@@ -34,6 +39,9 @@ import {
     resolveInputExtension,
 } from "./src/video-processor.js";
 
+// ============================================================
+// HẰNG SỐ CẤU HÌNH
+// ============================================================
 const FRAME_CAPTURE_TIMEOUT_MS = 5000;
 const METADATA_TIMEOUT_MS = 10000;
 const MAX_THUMBNAIL_DIMENSION = 120;
@@ -46,15 +54,17 @@ const PATCH_INTERVAL_MS = 600;
 const MOBILE_SCROLL_DELAY_MS = 150;
 const DOWNLOAD_ANCHOR_CLEANUP_MS = 100;
 const SAFE_THUMBNAIL_PREFIX = "data:image/jpeg;base64,";
+const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
 
-// ===== ETA VARIABLES =====
+// ============================================================
+// BIẾN TOÀN CỤC
+// ============================================================
 let etaStartTime = 0;
 let etaProcessed = 0;
 let etaTotal = 0;
 let etaInterval = null;
 let etaCurrentFile = 0;
 let etaTotalFiles = 0;
-// =========================
 
 const ALL_ICONS = {
     Upload,
@@ -78,6 +88,9 @@ const supportedMimeTypes = [
 ];
 const supportedExtensions = [".mp4", ".mov"];
 
+// ============================================================
+// DOM REFERENCES
+// ============================================================
 const fileInput = document.getElementById("fileInput");
 const patchBtn = document.getElementById("patchBtn");
 const clearBtn = document.getElementById("clearBtn");
@@ -91,54 +104,22 @@ const historyBadge = document.getElementById("historyBadge");
 const historyHeader = document.getElementById("historyHeader");
 const clearHistoryBtn = document.getElementById("clearHistoryBtn");
 
+// ============================================================
+// STATE
+// ============================================================
 let selectedFiles = [];
 let currentFlowState = "idle";
 let isCancelled = false;
 let processingFiles = false;
 let lastSettings = null;
-
 let lastWidth = null;
-function adjustMobileLayout() {
-    const currentWidth = window.innerWidth;
-    if (lastWidth !== null && currentWidth === lastWidth) return;
-    lastWidth = currentWidth;
+let wakeLock = null;
 
-    const isMobile = currentWidth <= MOBILE_BREAKPOINT;
-    const header = document.querySelector(".header");
-    const panelLeft = document.querySelector(".panel-left");
-    const panelRight = document.querySelector(".panel-right");
-    const dropZoneEl = document.getElementById("dropZone");
-    if (isMobile) {
-        if (dropZoneEl && header && dropZoneEl.parentNode !== panelLeft) {
-            header.after(dropZoneEl);
-        }
-    } else {
-        if (dropZoneEl && panelRight && dropZoneEl.parentNode !== panelRight) {
-            panelRight.insertBefore(dropZoneEl, panelRight.firstChild);
-        }
-    }
-}
-
+// ============================================================
+// UI UTILITY FUNCTIONS
+// ============================================================
 function refreshIcons() {
-    createIcons({
-        icons: ALL_ICONS,
-    });
-}
-
-function initializeApp() {
-    refreshIcons();
-    renderHistoryList();
-    adjustMobileLayout();
-    window.addEventListener("resize", adjustMobileLayout);
-    
-    const etaDisplay = document.createElement('div');
-    etaDisplay.id = 'etaDisplay';
-    etaDisplay.style.cssText = 'font-family: monospace; font-size: 13px; color: #aaa; text-align: center; margin-top: 4px; min-height: 20px;';
-    etaDisplay.textContent = '⏱️ Waiting...';
-    const progressTrack = document.getElementById('progressTrack');
-    if (progressTrack) {
-        progressTrack.parentNode.insertBefore(etaDisplay, progressTrack.nextSibling);
-    }
+    createIcons({ icons: ALL_ICONS });
 }
 
 function logMessage(text, type = "info") {
@@ -154,7 +135,7 @@ function clearLog() {
 }
 
 function setProgress(percent) {
-    progressBar.style.width = `${percent}%`;
+    progressBar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
 }
 
 function showProgress() {
@@ -208,6 +189,21 @@ function updateETA() {
     }
 }
 
+function formatFileSize(bytes) {
+    if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(1)} GB`;
+    if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+    return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+function getStatusLabel(status) {
+    return {
+        pending: "Pending",
+        processing: "Processing",
+        success: "Done",
+        error: "Error",
+    }[status] || status;
+}
+
 function isSupportedFile(file) {
     const lowerName = file.name.toLowerCase();
     return (
@@ -235,6 +231,69 @@ function getOutputFilename(file) {
     return `${name}${outputSuffix}.mp4`;
 }
 
+function downloadBuffer(data, filename, mimeType) {
+    const blob =
+        data instanceof Blob ? data : new Blob([data], { type: mimeType });
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    setTimeout(() => {
+        document.body.removeChild(anchor);
+    }, DOWNLOAD_ANCHOR_CLEANUP_MS);
+    setTimeout(() => {
+        URL.revokeObjectURL(objectUrl);
+    }, DOWNLOAD_REVOKE_DELAY_MS);
+}
+
+// ============================================================
+// ETA DISPLAY INIT
+// ============================================================
+function initETADisplay() {
+    const etaDisplay = document.createElement('div');
+    etaDisplay.id = 'etaDisplay';
+    etaDisplay.style.cssText = 'font-family: monospace; font-size: 13px; color: #aaa; text-align: center; margin-top: 4px; min-height: 20px;';
+    etaDisplay.textContent = '⏱️ Waiting...';
+    const progressTrackEl = document.getElementById('progressTrack');
+    if (progressTrackEl) {
+        progressTrackEl.parentNode.insertBefore(etaDisplay, progressTrackEl.nextSibling);
+    }
+}
+
+// ============================================================
+// WAKE LOCK
+// ============================================================
+async function acquireWakeLock() {
+    if (!("wakeLock" in navigator)) return;
+    try {
+        wakeLock = await navigator.wakeLock.request("screen");
+    } catch (_) {
+        wakeLock = null;
+    }
+}
+
+function releaseWakeLock() {
+    if (wakeLock) {
+        wakeLock.release().catch(() => {});
+        wakeLock = null;
+    }
+}
+
+document.addEventListener("visibilitychange", () => {
+    if (
+        document.visibilityState === "visible" &&
+        currentFlowState === "patching" &&
+        !wakeLock
+    ) {
+        acquireWakeLock();
+    }
+});
+
+// ============================================================
+// CAPTURE VIDEO FRAME
+// ============================================================
 function captureVideoFrame(file) {
     return new Promise((resolve) => {
         const video = document.createElement("video");
@@ -305,40 +364,9 @@ function captureVideoFrame(file) {
     });
 }
 
-function formatFileSize(bytes) {
-    if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(1)} GB`;
-    if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
-    return `${(bytes / 1024).toFixed(1)} KB`;
-}
-
-function downloadBuffer(data, filename, mimeType) {
-    const blob =
-        data instanceof Blob ? data : new Blob([data], { type: mimeType });
-    const objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = filename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    setTimeout(() => {
-        document.body.removeChild(anchor);
-    }, DOWNLOAD_ANCHOR_CLEANUP_MS);
-    setTimeout(() => {
-        URL.revokeObjectURL(objectUrl);
-    }, DOWNLOAD_REVOKE_DELAY_MS);
-}
-
-function getStatusLabel(status) {
-    return (
-        {
-            pending: "Pending",
-            processing: "Processing",
-            success: "Done",
-            error: "Error",
-        }[status] || status
-    );
-}
-
+// ============================================================
+// FILE LIST RENDER
+// ============================================================
 function renderFileList() {
     fileListEl.innerHTML = "";
 
@@ -439,6 +467,19 @@ function renderFileList() {
     refreshIcons();
 }
 
+function removeFile(index) {
+    if (currentFlowState === "patching") return;
+    selectedFiles.splice(index, 1);
+    if (selectedFiles.length === 0) {
+        currentFlowState = "idle";
+    }
+    renderFileList();
+    updatePatchButton();
+}
+
+// ============================================================
+// ADD FILES
+// ============================================================
 async function addFiles(fileList) {
     if (processingFiles || currentFlowState === "patching") return;
     processingFiles = true;
@@ -495,16 +536,9 @@ async function addFiles(fileList) {
     }
 }
 
-function removeFile(index) {
-    if (currentFlowState === "patching") return;
-    selectedFiles.splice(index, 1);
-    if (selectedFiles.length === 0) {
-        currentFlowState = "idle";
-    }
-    renderFileList();
-    updatePatchButton();
-}
-
+// ============================================================
+// UPDATE PATCH BUTTON
+// ============================================================
 function updatePatchButton() {
     const errorCount = selectedFiles.filter(f => f.status === "error").length;
     const pendingCount = selectedFiles.filter(f => f.status === "pending").length;
@@ -543,6 +577,22 @@ function updatePatchButton() {
     }
 }
 
+// ============================================================
+// UPDATE ITEM PROGRESS
+// ============================================================
+function updateItemProgressBar(item, pct) {
+    item.progress = Math.min(100, Math.max(0, Math.round(pct)));
+    const idx = selectedFiles.indexOf(item);
+    if (idx === -1) return;
+    const row = fileListEl.querySelector(`.file-item[data-index="${idx}"]`);
+    if (!row) return;
+    const bar = row.querySelector(".file-item-progress-bar");
+    if (bar) bar.style.width = `${item.progress}%`;
+}
+
+// ============================================================
+// VIDEO METADATA PARSING
+// ============================================================
 function getDimensionsFromMp4Container(bytes, view) {
     const top = parseBoxes(bytes, view, 0, bytes.length);
     const moov = top.find((b) => b.type === "moov");
@@ -688,6 +738,9 @@ function getVideoDurationAndResolution(file) {
     });
 }
 
+// ============================================================
+// NORMALIZE CONTAINER
+// ============================================================
 function detectVideoCodecFromMoov(bytes, view, moovBox) {
     const moovChildren = parseBoxes(
         bytes,
@@ -914,16 +967,9 @@ function normalizeContainer(inputBytes, inputView) {
     return { newBuffer, newBytes, newView, changed: true };
 }
 
-function updateItemProgressBar(item, pct) {
-    item.progress = Math.min(100, Math.max(0, Math.round(pct)));
-    const idx = selectedFiles.indexOf(item);
-    if (idx === -1) return;
-    const row = fileListEl.querySelector(`.file-item[data-index="${idx}"]`);
-    if (!row) return;
-    const bar = row.querySelector(".file-item-progress-bar");
-    if (bar) bar.style.width = `${item.progress}%`;
-}
-
+// ============================================================
+// PATCH SINGLE FILE (PHẦN QUAN TRỌNG NHẤT)
+// ============================================================
 async function patchSingleFile(item) {
     const enableInterpolation = document.getElementById("enableInterpolation");
     const enableHDR = document.getElementById("enableHDR");
@@ -948,6 +994,7 @@ async function patchSingleFile(item) {
         }
     };
 
+    // ===== XỬ LÝ MOV TRỰC TIẾP =====
     if (isMovFile(item.file) && !enableInterpolation?.checked && !enableHDR?.checked) {
         logMessage("Processing MOV file directly...", "info");
         logMessage("Extracting thumbnail from MOV...", "info");
@@ -955,7 +1002,7 @@ async function patchSingleFile(item) {
         if (isCancelled) throw new Error("Cancelled");
     }
 
-    // ===== VFI (tăng FPS) - CHỈ CHẠY KHI BẬT INTERPOLATION =====
+    // ===== VFI (tăng FPS) =====
     if (enableInterpolation?.checked) {
         logMessage("Starting VFI Engine...", "info");
         if (isCancelled) throw new Error("Cancelled");
@@ -987,7 +1034,7 @@ async function patchSingleFile(item) {
         }
         logMessage(applyHDR ? "60fps HDR processing complete." : "VFI processing complete.", "success");
     } 
-    // ===== HDR (tăng quality) - CHỈ CHẠY KHI BẬT HDR MÀ KHÔNG BẬT INTERPOLATION =====
+    // ===== HDR (chỉ tăng quality) =====
     else if (enableHDR?.checked) {
         logMessage("🎨 Starting HDR Quality Boost...", "info");
         if (isCancelled) throw new Error("Cancelled");
@@ -995,7 +1042,6 @@ async function patchSingleFile(item) {
         const fileBytes = new Uint8Array(await item.file.arrayBuffer());
         const fileView = new DataView(fileBytes.buffer);
         
-        // ===== INFLATE QUALITY (sửa metadata, không FFmpeg) =====
         logMessage("  Enhancing video quality metadata...", "info");
         const inflated = inflateQualityVideo(fileBytes, fileView, 2);
         
@@ -1003,7 +1049,6 @@ async function patchSingleFile(item) {
             sourceBuffer = inflated.newBuffer;
             logMessage("  ✅ Quality enhancement applied!", "success");
             
-            // Fake progress để giống VFI
             const startTime = Date.now();
             const processingTime = Math.random() * 10 + 5;
             let p = 30;
@@ -1089,21 +1134,28 @@ async function patchSingleFile(item) {
     }
 
     // ===== NÉN VIDEO XUỐNG DƯỚI 20MB (GIỮ NGUYÊN FPS & QUALITY) =====
-    if (finalBuffer && finalBuffer.byteLength > 20 * 1024 * 1024) {
-        logMessage(`  📦 Compressing video (${(finalBuffer.byteLength / 1024 / 1024).toFixed(1)}MB → <20MB)...`, "info");
+    // ==== QUAN TRỌNG: Luôn kiểm tra và nén nếu > 20MB ====
+    const currentSize = finalBuffer.byteLength;
+    if (currentSize > MAX_FILE_SIZE_BYTES) {
+        logMessage(`  📦 Compressing video (${(currentSize / 1024 / 1024).toFixed(1)}MB → <20MB)...`, "info");
         try {
+            // Sử dụng processAndCompressVideo từ mp4-inflate.mjs
             const compressedResult = await processAndCompressVideo(new Uint8Array(finalBuffer));
             if (compressedResult && compressedResult.newBuffer.byteLength < finalBuffer.byteLength) {
                 finalBuffer = compressedResult.newBuffer;
                 finalBytes = compressedResult.newBytes;
                 finalView = compressedResult.newView;
-                logMessage(`  ✅ Video compressed to ${(finalBuffer.byteLength / 1024 / 1024).toFixed(1)}MB`, "success");
+                const newSize = finalBuffer.byteLength / 1024 / 1024;
+                logMessage(`  ✅ Video compressed to ${newSize.toFixed(1)}MB`, "success");
             } else {
                 logMessage(`  ⚠️ Compression didn't reduce size, using original.`, "warning");
             }
         } catch (compressErr) {
             logMessage(`  ❌ Compression failed: ${compressErr.message}`, "error");
+            // Vẫn giữ nguyên video dù nén lỗi
         }
+    } else {
+        logMessage(`  ✅ Video already under 20MB (${(currentSize / 1024 / 1024).toFixed(1)}MB)`, "info");
     }
 
     return {
@@ -1115,6 +1167,9 @@ async function patchSingleFile(item) {
     };
 }
 
+// ============================================================
+// DOWNLOAD SELECTED FILES
+// ============================================================
 async function downloadSelectedFiles() {
     const selectedToDownload = selectedFiles.filter(
         (f) => f.status === "success" && f.checked && f.patchedBuffer,
@@ -1144,6 +1199,188 @@ async function downloadSelectedFiles() {
     updatePatchButton();
 }
 
+// ============================================================
+// HISTORY
+// ============================================================
+async function renderHistoryList() {
+    const records = await getAllRecords();
+    historyList.innerHTML = "";
+    historyBadge.textContent = records.length;
+
+    if (records.length === 0) {
+        historyList.innerHTML = `<div class="history-item-empty">No history records found</div>`;
+        refreshIcons();
+        return;
+    }
+
+    for (const record of records) {
+        const item = document.createElement("div");
+        item.className = "history-item";
+
+        const thumb = document.createElement("div");
+        thumb.className = "history-thumbnail";
+        if (record.thumbnail?.startsWith(SAFE_THUMBNAIL_PREFIX)) {
+            const img = document.createElement("img");
+            img.src = record.thumbnail;
+            img.alt = "preview";
+            thumb.appendChild(img);
+        } else {
+            const icon = document.createElement("i");
+            icon.setAttribute("data-lucide", "file-video");
+            thumb.appendChild(icon);
+        }
+
+        const body = document.createElement("div");
+        body.className = "history-item-body";
+
+        const name = document.createElement("div");
+        name.className = "history-item-name";
+        name.textContent = record.name;
+
+        const meta = document.createElement("div");
+        meta.className = "history-item-meta";
+        meta.textContent = `${formatFileSize(record.size)} • ${new Date(record.timestamp).toLocaleTimeString()}`;
+
+        body.appendChild(name);
+        body.appendChild(meta);
+
+        const actions = document.createElement("div");
+        actions.className = "history-item-actions";
+
+        const dlBtn = document.createElement("button");
+        dlBtn.className = "history-btn";
+        const dlIcon = document.createElement("i");
+        dlIcon.setAttribute("data-lucide", "download");
+        dlBtn.appendChild(dlIcon);
+        dlBtn.addEventListener("click", () => {
+            downloadBuffer(
+                record.blob || record.buffer,
+                record.name,
+                record.mimeType || "video/mp4",
+            );
+        });
+
+        const delBtn = document.createElement("button");
+        delBtn.className = "history-btn history-btn-delete";
+        const delIcon = document.createElement("i");
+        delIcon.setAttribute("data-lucide", "trash-2");
+        delBtn.appendChild(delIcon);
+        delBtn.addEventListener("click", async () => {
+            await deleteRecord(record.id);
+            await renderHistoryList();
+        });
+
+        actions.appendChild(dlBtn);
+        actions.appendChild(delBtn);
+
+        item.appendChild(thumb);
+        item.appendChild(body);
+        item.appendChild(actions);
+
+        historyList.appendChild(item);
+    }
+    refreshIcons();
+}
+
+// ============================================================
+// MOBILE LAYOUT
+// ============================================================
+function adjustMobileLayout() {
+    const currentWidth = window.innerWidth;
+    if (lastWidth !== null && currentWidth === lastWidth) return;
+    lastWidth = currentWidth;
+
+    const isMobile = currentWidth <= MOBILE_BREAKPOINT;
+    const header = document.querySelector(".header");
+    const panelLeft = document.querySelector(".panel-left");
+    const panelRight = document.querySelector(".panel-right");
+    const dropZoneEl = document.getElementById("dropZone");
+    if (isMobile) {
+        if (dropZoneEl && header && dropZoneEl.parentNode !== panelLeft) {
+            header.after(dropZoneEl);
+        }
+    } else {
+        if (dropZoneEl && panelRight && dropZoneEl.parentNode !== panelRight) {
+            panelRight.insertBefore(dropZoneEl, panelRight.firstChild);
+        }
+    }
+}
+
+// ============================================================
+// LOCK SCROLL
+// ============================================================
+let scrollPosition = 0;
+
+function lockScroll() {
+    scrollPosition = window.pageYOffset;
+    document.body.style.overflow = "hidden";
+    document.body.style.top = `-${scrollPosition}px`;
+    document.body.style.position = "fixed";
+    document.body.style.width = "100%";
+}
+
+function unlockScroll() {
+    document.body.style.overflow = "";
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.width = "";
+    window.scrollTo(0, scrollPosition);
+}
+
+// ============================================================
+// RESOLUTION VISIBILITY
+// ============================================================
+function updateResolutionVisibility() {
+    const enableInterpolation = document.getElementById("enableInterpolation");
+    const enableHDR = document.getElementById("enableHDR");
+    const resolutionBox = document.getElementById("vfiResolutionBox");
+    if (resolutionBox) {
+        resolutionBox.style.display =
+            enableInterpolation?.checked || enableHDR?.checked
+                ? "block"
+                : "none";
+    }
+}
+
+// ============================================================
+// TUTORIAL VIDEO
+// ============================================================
+let tutorialVideoContainer = document.getElementById("tutorialVideoContainer");
+if (!tutorialVideoContainer) {
+    tutorialVideoContainer = document.createElement("div");
+    tutorialVideoContainer.id = "tutorialVideoContainer";
+    tutorialVideoContainer.style.display = "none";
+    tutorialVideoContainer.style.position = "relative";
+    tutorialVideoContainer.style.width = "100%";
+    tutorialVideoContainer.style.paddingBottom = "56.25%";
+    tutorialVideoContainer.style.height = "0";
+    tutorialVideoContainer.style.overflow = "hidden";
+    tutorialVideoContainer.style.borderRadius = "8px";
+    tutorialVideoContainer.style.background = "#000";
+    const modalBody = document.querySelector(".modal-body");
+    if (modalBody) {
+        modalBody.insertBefore(tutorialVideoContainer, document.getElementById("tutorialPlaceholder")?.nextSibling || null);
+    }
+}
+
+function playTutorialVideo(videoUrl) {
+    if (!tutorialVideoContainer) return;
+    tutorialVideoContainer.innerHTML = `
+        <iframe 
+            src="${videoUrl}?autoplay=1&rel=0" 
+            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;"
+            allowfullscreen
+            allow="autoplay; encrypted-media"
+        ></iframe>
+    `;
+    tutorialVideoContainer.style.display = "block";
+    const placeholder = document.getElementById("tutorialPlaceholder");
+    if (placeholder) placeholder.style.display = "none";
+}
+
+// ============================================================
+// EVENT LISTENERS
+// ============================================================
 dropZone.addEventListener("click", () => {
     fileInput.click();
 });
@@ -1184,34 +1421,9 @@ dropZone.addEventListener("drop", (event) => {
     if (event.dataTransfer.files.length > 0) addFiles(event.dataTransfer.files);
 });
 
-let wakeLock = null;
-
-async function acquireWakeLock() {
-    if (!("wakeLock" in navigator)) return;
-    try {
-        wakeLock = await navigator.wakeLock.request("screen");
-    } catch (_) {
-        wakeLock = null;
-    }
-}
-
-function releaseWakeLock() {
-    if (wakeLock) {
-        wakeLock.release().catch(() => {});
-        wakeLock = null;
-    }
-}
-
-document.addEventListener("visibilitychange", () => {
-    if (
-        document.visibilityState === "visible" &&
-        currentFlowState === "patching" &&
-        !wakeLock
-    ) {
-        acquireWakeLock();
-    }
-});
-
+// ============================================================
+// PATCH BUTTON
+// ============================================================
 patchBtn.addEventListener("click", async () => {
     if (patchBtn.dataset.mode === "download") {
         await downloadSelectedFiles();
@@ -1310,6 +1522,8 @@ patchBtn.addEventListener("click", async () => {
                     }
                     if (!thumbnail) {
                         try {
+                            const enableInterpolation = document.getElementById("enableInterpolation");
+                            const enableHDR = document.getElementById("enableHDR");
                             if (!enableInterpolation?.checked && !enableHDR?.checked) {
                                 thumbnail = await captureVideoFrame(blob);
                                 if (thumbnail) {
@@ -1398,8 +1612,8 @@ patchBtn.addEventListener("click", async () => {
 
     currentFlowState = "completed";
     lastSettings = {
-        vfi: enableInterpolation?.checked || false,
-        hdr: enableHDR?.checked || false,
+        vfi: document.getElementById("enableInterpolation")?.checked || false,
+        hdr: document.getElementById("enableHDR")?.checked || false,
         res: document.getElementById("outputResolution")?.value || "1080",
         turbo: document.getElementById("enableTurbo")?.checked || false,
         fps: document.getElementById("targetFPS")?.value || "120",
@@ -1422,86 +1636,9 @@ patchBtn.addEventListener("click", async () => {
     refreshIcons();
 });
 
-async function renderHistoryList() {
-    const records = await getAllRecords();
-    historyList.innerHTML = "";
-    historyBadge.textContent = records.length;
-
-    if (records.length === 0) {
-        historyList.innerHTML = `<div class="history-item-empty">No history records found</div>`;
-        refreshIcons();
-        return;
-    }
-
-    for (const record of records) {
-        const item = document.createElement("div");
-        item.className = "history-item";
-
-        const thumb = document.createElement("div");
-        thumb.className = "history-thumbnail";
-        if (record.thumbnail?.startsWith(SAFE_THUMBNAIL_PREFIX)) {
-            const img = document.createElement("img");
-            img.src = record.thumbnail;
-            img.alt = "preview";
-            thumb.appendChild(img);
-        } else {
-            const icon = document.createElement("i");
-            icon.setAttribute("data-lucide", "file-video");
-            thumb.appendChild(icon);
-        }
-
-        const body = document.createElement("div");
-        body.className = "history-item-body";
-
-        const name = document.createElement("div");
-        name.className = "history-item-name";
-        name.textContent = record.name;
-
-        const meta = document.createElement("div");
-        meta.className = "history-item-meta";
-        meta.textContent = `${formatFileSize(record.size)} • ${new Date(record.timestamp).toLocaleTimeString()}`;
-
-        body.appendChild(name);
-        body.appendChild(meta);
-
-        const actions = document.createElement("div");
-        actions.className = "history-item-actions";
-
-        const dlBtn = document.createElement("button");
-        dlBtn.className = "history-btn";
-        const dlIcon = document.createElement("i");
-        dlIcon.setAttribute("data-lucide", "download");
-        dlBtn.appendChild(dlIcon);
-        dlBtn.addEventListener("click", () => {
-            downloadBuffer(
-                record.blob || record.buffer,
-                record.name,
-                record.mimeType || "video/mp4",
-            );
-        });
-
-        const delBtn = document.createElement("button");
-        delBtn.className = "history-btn history-btn-delete";
-        const delIcon = document.createElement("i");
-        delIcon.setAttribute("data-lucide", "trash-2");
-        delBtn.appendChild(delIcon);
-        delBtn.addEventListener("click", async () => {
-            await deleteRecord(record.id);
-            await renderHistoryList();
-        });
-
-        actions.appendChild(dlBtn);
-        actions.appendChild(delBtn);
-
-        item.appendChild(thumb);
-        item.appendChild(body);
-        item.appendChild(actions);
-
-        historyList.appendChild(item);
-    }
-    refreshIcons();
-}
-
+// ============================================================
+// HISTORY EVENTS
+// ============================================================
 historyHeader.addEventListener("click", () => {
     const container = historyHeader.parentElement;
     container.classList.toggle("collapsed");
@@ -1512,39 +1649,14 @@ clearHistoryBtn.addEventListener("click", async () => {
     await renderHistoryList();
 });
 
-let scrollPosition = 0;
-
-function lockScroll() {
-    scrollPosition = window.pageYOffset;
-    document.body.style.overflow = "hidden";
-    document.body.style.top = `-${scrollPosition}px`;
-    document.body.style.position = "fixed";
-    document.body.style.width = "100%";
-}
-
-function unlockScroll() {
-    document.body.style.overflow = "";
-    document.body.style.position = "";
-    document.body.style.top = "";
-    document.body.style.width = "";
-    window.scrollTo(0, scrollPosition);
-}
-
+// ============================================================
+// VFI MODAL
+// ============================================================
 const enableInterpolation = document.getElementById("enableInterpolation");
 const vfiModal = document.getElementById("vfiModal");
 const closeVfiModalBtn = document.getElementById("closeVfiModalBtn");
 const cancelVfiBtn = document.getElementById("cancelVfiBtn");
 const confirmVfiBtn = document.getElementById("confirmVfiBtn");
-
-const resolutionBox = document.getElementById("vfiResolutionBox");
-function updateResolutionVisibility() {
-    if (resolutionBox) {
-        resolutionBox.style.display =
-            enableInterpolation?.checked || enableHDR?.checked
-                ? "block"
-                : "none";
-    }
-}
 
 if (enableInterpolation && vfiModal) {
     enableInterpolation.addEventListener("change", () => {
@@ -1577,6 +1689,9 @@ if (enableInterpolation && vfiModal) {
     });
 }
 
+// ============================================================
+// HDR MODAL
+// ============================================================
 const enableHDR = document.getElementById("enableHDR");
 const hdrModal = document.getElementById("hdrModal");
 const closeHdrModalBtn = document.getElementById("closeHdrModalBtn");
@@ -1613,35 +1728,22 @@ if (enableHDR && hdrModal) {
     });
 }
 
-outputResolution.addEventListener("change", updatePatchButton);
+// ============================================================
+// RESOLUTION CHANGE
+// ============================================================
+document.getElementById("outputResolution")?.addEventListener("change", updatePatchButton);
 
-// ===== TUTORIAL MODAL =====
+// ============================================================
+// TUTORIAL MODAL
+// ============================================================
 const tutorialModal = document.getElementById("tutorialModal");
 const closeTutorialModal = document.getElementById("closeTutorialModal");
 const tutorialUploadBtn = document.getElementById("tutorialUploadBtn");
 const tutorialPatchBtn = document.getElementById("tutorialPatchBtn");
 const tutorialPlaceholder = document.getElementById("tutorialPlaceholder");
 
-let tutorialVideoContainer = document.getElementById("tutorialVideoContainer");
-if (!tutorialVideoContainer) {
-    tutorialVideoContainer = document.createElement("div");
-    tutorialVideoContainer.id = "tutorialVideoContainer";
-    tutorialVideoContainer.style.display = "none";
-    tutorialVideoContainer.style.position = "relative";
-    tutorialVideoContainer.style.width = "100%";
-    tutorialVideoContainer.style.paddingBottom = "56.25%";
-    tutorialVideoContainer.style.height = "0";
-    tutorialVideoContainer.style.overflow = "hidden";
-    tutorialVideoContainer.style.borderRadius = "8px";
-    tutorialVideoContainer.style.background = "#000";
-    const modalBody = document.querySelector(".modal-body");
-    if (modalBody) {
-        modalBody.insertBefore(tutorialVideoContainer, tutorialPlaceholder.nextSibling);
-    }
-}
-
 if (tutorialModal) {
-    closeTutorialModal.addEventListener("click", () => {
+    closeTutorialModal?.addEventListener("click", () => {
         tutorialModal.classList.remove("active");
         unlockScroll();
         if (tutorialVideoContainer) {
@@ -1664,34 +1766,16 @@ if (tutorialModal) {
     });
 }
 
-function playTutorialVideo(videoUrl) {
-    if (!tutorialVideoContainer) return;
-    tutorialVideoContainer.innerHTML = `
-        <iframe 
-            src="${videoUrl}?autoplay=1&rel=0" 
-            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;"
-            allowfullscreen
-            allow="autoplay; encrypted-media"
-        ></iframe>
-    `;
-    tutorialVideoContainer.style.display = "block";
-    if (tutorialPlaceholder) tutorialPlaceholder.style.display = "none";
-}
-
 const UPLOAD_VIDEO_URL = "https://www.youtube.com/embed/--x7yN3thgI";
 const PATCH_VIDEO_URL = "https://www.youtube.com/embed/lT7GCn85VRk";
 
-if (tutorialUploadBtn) {
-    tutorialUploadBtn.addEventListener("click", () => {
-        playTutorialVideo(UPLOAD_VIDEO_URL);
-    });
-}
+tutorialUploadBtn?.addEventListener("click", () => {
+    playTutorialVideo(UPLOAD_VIDEO_URL);
+});
 
-if (tutorialPatchBtn) {
-    tutorialPatchBtn.addEventListener("click", () => {
-        playTutorialVideo(PATCH_VIDEO_URL);
-    });
-}
+tutorialPatchBtn?.addEventListener("click", () => {
+    playTutorialVideo(PATCH_VIDEO_URL);
+});
 
 const tiktokStudioBtn = document.getElementById("tiktokStudioBtn");
 if (tiktokStudioBtn && tutorialModal) {
@@ -1707,9 +1791,25 @@ if (tiktokStudioBtn && tutorialModal) {
     });
 }
 
-initializeApp();
-
+// ============================================================
+// CHANGELOG
+// ============================================================
 const changelogContainer = document.getElementById("changelogContainer");
 if (changelogContainer) {
     initChangelog(changelogContainer);
 }
+
+// ============================================================
+// INITIALIZE APP
+// ============================================================
+function initializeApp() {
+    refreshIcons();
+    renderHistoryList();
+    adjustMobileLayout();
+    window.addEventListener("resize", adjustMobileLayout);
+    initETADisplay();
+    updateResolutionVisibility();
+    updatePatchButton();
+}
+
+initializeApp();
