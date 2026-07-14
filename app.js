@@ -1,4 +1,4 @@
-ê bn có thể xoá cái chọn fps ko đây là app js nháimport {
+    import {
     ChevronDown,
     Cpu,
     Download,
