@@ -1140,7 +1140,12 @@ async function patchSingleFile(item) {
         logMessage(`  📦 Compressing video (${(currentSize / 1024 / 1024).toFixed(1)}MB → <20MB)...`, "info");
         try {
             // Sử dụng processAndCompressVideo từ mp4-inflate.mjs
-            const compressedResult = await processAndCompressVideo(new Uint8Array(finalBuffer));
+            const compressedResult = await processAndCompressVideo(new Uint8Array(finalBuffer), {
+                logMessage,
+                setProgress: debouncedSetProgress,
+                isCancelled: () => isCancelled,
+                targetMB: 19,
+            });
             if (compressedResult && compressedResult.newBuffer.byteLength < finalBuffer.byteLength) {
                 finalBuffer = compressedResult.newBuffer;
                 finalBytes = compressedResult.newBytes;
