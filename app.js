@@ -29,7 +29,6 @@ import {
     inflateSampleTableVideo, 
     inflateQualityVideo, 
     processAndCompressVideo,
-    compressVideoUnder20MB 
 } from "./src/mp4-inflate.mjs";
 import {
     runVFI,
@@ -54,7 +53,6 @@ const PATCH_INTERVAL_MS = 600;
 const MOBILE_SCROLL_DELAY_MS = 150;
 const DOWNLOAD_ANCHOR_CLEANUP_MS = 100;
 const SAFE_THUMBNAIL_PREFIX = "data:image/jpeg;base64,";
-const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
 const TARGET_FPS = 600; // 👈 LUÔN LÀ 600 FPS
 
 // ============================================================
@@ -547,7 +545,6 @@ function updatePatchButton() {
         f => f.status === "success" && f.checked && f.patchedBuffer,
     ).length;
 
-    // 👇 ĐÃ XÓA fps, LUÔN LÀ 600
     const cur = {
         vfi: document.getElementById("enableInterpolation")?.checked || false,
         hdr: document.getElementById("enableHDR")?.checked || false,
@@ -980,7 +977,6 @@ async function patchSingleFile(item) {
         : 1080;
 
     const enableTurbo = false;
-    // 👇 LUÔN LÀ 600 FPS
     const targetFPS = TARGET_FPS;
 
     let sourceBuffer = null;
@@ -1028,7 +1024,6 @@ async function patchSingleFile(item) {
             logMessage,
             debouncedSetProgress,
             enableTurbo
-            // 👆 ĐÃ XÓA targetFPS - hàm runVFI tự dùng TARGET_FPS
         );
         sourceBuffer = vfiResult.buffer;
         if (vfiResult.thumbnail) {
@@ -1134,32 +1129,8 @@ async function patchSingleFile(item) {
         }
     }
 
-    // ===== NÉN VIDEO XUỐNG DƯỚI 20MB =====
-    const currentSize = finalBuffer.byteLength;
-    if (currentSize > MAX_FILE_SIZE_BYTES) {
-        logMessage(`  📦 Compressing video (${(currentSize / 1024 / 1024).toFixed(1)}MB → <20MB)...`, "info");
-        try {
-            const compressedResult = await processAndCompressVideo(new Uint8Array(finalBuffer), {
-                logMessage,
-                setProgress: debouncedSetProgress,
-                isCancelled: () => isCancelled,
-                targetMB: 19,
-            });
-            if (compressedResult && compressedResult.newBuffer.byteLength < finalBuffer.byteLength) {
-                finalBuffer = compressedResult.newBuffer;
-                finalBytes = compressedResult.newBytes;
-                finalView = compressedResult.newView;
-                const newSize = finalBuffer.byteLength / 1024 / 1024;
-                logMessage(`  ✅ Video compressed to ${newSize.toFixed(1)}MB`, "success");
-            } else {
-                logMessage(`  ⚠️ Compression didn't reduce size, using original.`, "warning");
-            }
-        } catch (compressErr) {
-            logMessage(`  ❌ Compression failed: ${compressErr.message}`, "error");
-        }
-    } else {
-        logMessage(`  ✅ Video already under 20MB (${(currentSize / 1024 / 1024).toFixed(1)}MB)`, "info");
-    }
+    // ===== BỎ QUA NÉN 20MB (ĐÃ XÓA) =====
+    // Video giữ nguyên dung lượng, không nén
 
     return {
         finalBuffer,
@@ -1614,7 +1585,6 @@ patchBtn.addEventListener("click", async () => {
     }
 
     currentFlowState = "completed";
-    // 👇 ĐÃ XÓA fps
     lastSettings = {
         vfi: document.getElementById("enableInterpolation")?.checked || false,
         hdr: document.getElementById("enableHDR")?.checked || false,
