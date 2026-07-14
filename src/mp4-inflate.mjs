@@ -534,14 +534,12 @@ export async function compressVideoUnder20MB(inputBytes) {
     // -c:v libx264: Codec H.264
     // -crf 23: Quality gần như không thay đổi (mặc định của FFmpeg)
     // -preset medium: Cân bằng giữa tốc độ và chất lượng
-    // -vf "fps=...": Giữ nguyên FPS gốc (lấy từ input)
     // -c:a aac -b:a 128k: Nén audio với chất lượng tốt
     await ffmpeg.exec([
         '-i', inputName,
         '-c:v', 'libx264',
         '-crf', '23',
         '-preset', 'medium',
-        '-vf', 'fps=60', // Giữ FPS 60 (hoặc lấy từ input nếu khác)
         '-c:a', 'aac',
         '-b:a', '128k',
         '-movflags', '+faststart',
