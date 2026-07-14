@@ -198,22 +198,44 @@ export async function compressVideoUnder20MB(
         await instance.writeFile(inputName, inputBytes);
         checkCancelled();
 
-        // ---- Probe real duration from ffmpeg's own stderr log ----
+        // ---- Probe real duration + resolution from ffmpeg's own stderr log ----
         let duration = null;
+        let srcWidth = null;
+        let srcHeight = null;
         const probeHandler = ({ message }) => {
-            if (duration !== null) return;
-            const match = /Duration:\s*(\d+):(\d+):(\d+\.?\d*)/.exec(message || "");
-            if (match) {
+            const durMatch = /Duration:\s*(\d+):(\d+):(\d+\.?\d*)/.exec(message || "");
+            if (durMatch && duration === null) {
                 duration =
-                    parseInt(match[1], 10) * 3600 +
-                    parseInt(match[2], 10) * 60 +
-                    parseFloat(match[3]);
+                    parseInt(durMatch[1], 10) * 3600 +
+                    parseInt(durMatch[2], 10) * 60 +
+                    parseFloat(durMatch[3]);
+            }
+            const resMatch = /Video:.*?(\d{2,5})x(\d{2,5})/.exec(message || "");
+            if (resMatch && srcWidth === null) {
+                srcWidth = parseInt(resMatch[1], 10);
+                srcHeight = parseInt(resMatch[2], 10);
             }
         };
         instance.on("log", probeHandler);
         await instance.exec(["-i", inputName]).catch(() => {});
         if (typeof instance.off === "function") instance.off("log", probeHandler);
         checkCancelled();
+
+        // Encoding a huge source at its native resolution (often 4K straight
+        // off a phone) single-threaded in WASM is what actually crashes the
+        // tab — the WASM heap has to hold raw decoded frames at full res.
+        // Cap the long edge at 1080p for this pass; that alone cuts memory
+        // use roughly 4x for a 4K source and makes hitting a size target
+        // realistic without OOM-ing the browser.
+        const MAX_LONG_EDGE = 1080;
+        let scaleFilter = null;
+        if (srcWidth && srcHeight && Math.max(srcWidth, srcHeight) > MAX_LONG_EDGE) {
+            scaleFilter =
+                srcWidth >= srcHeight
+                    ? `scale=${MAX_LONG_EDGE}:-2`
+                    : `scale=-2:${MAX_LONG_EDGE}`;
+            log(`  📐 Source is ${srcWidth}x${srcHeight} — downscaling to ~${MAX_LONG_EDGE}p to stay within browser memory limits.`, "info");
+        }
 
         const audioBitrateBps = 96000;
         let videoBitrateKbps;
@@ -236,6 +258,7 @@ export async function compressVideoUnder20MB(
         checkCancelled();
         const baseArgs = [
             "-i", inputName,
+            ...(scaleFilter ? ["-vf", scaleFilter] : []),
             "-c:v", "libx264",
             "-b:v", `${videoBitrateKbps}k`,
             "-maxrate", `${Math.round(videoBitrateKbps * 1.45)}k`,
