@@ -356,6 +356,7 @@ function renderFileList() {
         const removeIndex = index;
         const row = document.createElement("div");
         row.className = `file-item status-${item.status}`;
+        row.dataset.index = removeIndex;
 
         const checkboxWrapper = document.createElement("label");
         checkboxWrapper.className = "custom-checkbox";
@@ -394,6 +395,7 @@ function renderFileList() {
         fileProgressTrack.className = "file-item-progress";
         const fileProgressBar = document.createElement("div");
         fileProgressBar.className = "file-item-progress-bar";
+        fileProgressBar.style.width = `${item.progress || 0}%`;
         fileProgressTrack.appendChild(fileProgressBar);
 
         body.appendChild(name);
@@ -471,6 +473,7 @@ async function addFiles(fileList) {
                 outputName: null,
                 mimeType: null,
                 checked: true,
+                progress: 0,
             });
         }
         if (skipped > 0) logMessage(`${skipped} file(s) skipped.`, "warning");
@@ -911,6 +914,16 @@ function normalizeContainer(inputBytes, inputView) {
     return { newBuffer, newBytes, newView, changed: true };
 }
 
+function updateItemProgressBar(item, pct) {
+    item.progress = Math.min(100, Math.max(0, Math.round(pct)));
+    const idx = selectedFiles.indexOf(item);
+    if (idx === -1) return;
+    const row = fileListEl.querySelector(`.file-item[data-index="${idx}"]`);
+    if (!row) return;
+    const bar = row.querySelector(".file-item-progress-bar");
+    if (bar) bar.style.width = `${item.progress}%`;
+}
+
 async function patchSingleFile(item) {
     const enableInterpolation = document.getElementById("enableInterpolation");
     const enableHDR = document.getElementById("enableHDR");
@@ -930,6 +943,7 @@ async function patchSingleFile(item) {
         if (pct - lastProgress >= 2 || pct === 100) {
             lastProgress = pct;
             setProgress(pct);
+            updateItemProgressBar(item, pct);
             setTimeout(() => {}, 0);
         }
     };
@@ -1223,6 +1237,7 @@ patchBtn.addEventListener("click", async () => {
         setProgress(Math.round((i / pendingItems.length) * 100));
 
         item.status = "processing";
+        item.progress = 0;
         renderFileList();
         logMessage(`[${i + 1}/${pendingItems.length}] ${item.name}`, "info");
 
@@ -1233,6 +1248,7 @@ patchBtn.addEventListener("click", async () => {
                 break;
             }
             item.status = "success";
+            updateItemProgressBar(item, 100);
             item.patchedBuffer = result.finalBuffer;
             item.outputName = result.outputName;
             item.mimeType = result.mimeType;
