@@ -352,6 +352,10 @@ export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
     return { newBuffer, newBytes, newView };
 }
 
+// ============================================================
+// PHẦN 3: HÀM INFLATE QUALITY
+// ============================================================
+
 export function inflateQualityVideo(inputBytes, inputView, level = 1) {
     const fileSize = inputBytes.length;
     const topBoxes = parseBoxes(inputBytes, inputView, 0, fileSize);
@@ -396,15 +400,13 @@ export function inflateQualityVideo(inputBytes, inputView, level = 1) {
 }
 
 // ============================================================
-// PHẦN 3: HÀM TÍCH HỢP CHÍNH (BỎ NÉN 20MB)
+// PHẦN 4: HÀM TÍCH HỢP CHÍNH (BỎ NÉN)
 // ============================================================
 
 export async function processAndCompressVideo(inputBytes, options = {}) {
-    // 👇 BỎ QUA NÉN, GIỮ NGUYÊN VIDEO
     const bytes = new Uint8Array(inputBytes);
     const view = new DataView(bytes.buffer);
     
-    // Chỉ chạy inflate quality nếu có
     const finalResult = inflateQualityVideo(bytes, view, 1);
     
     if (finalResult) {
@@ -419,11 +421,10 @@ export async function processAndCompressVideo(inputBytes, options = {}) {
 }
 
 // ============================================================
-// PHẦN 4: HÀM FAKE VIDEO (BỎ QUA)
+// PHẦN 5: HÀM FAKE VIDEO (BỎ QUA)
 // ============================================================
 
 export async function createFakeVideo(inputBytes) {
-    // Chỉ trả về video gốc, không fake
     const bytes = new Uint8Array(inputBytes);
     const view = new DataView(bytes.buffer);
     
