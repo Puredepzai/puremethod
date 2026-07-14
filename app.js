@@ -25,7 +25,7 @@ import {
     updateBoxSize,
     updateChunkOffsets,
 } from "./src/mp4-boxes.mjs";
-import { inflateSampleTableVideo, inflateQualityVideo } from "./src/mp4-inflate.mjs";
+import { inflateSampleTableVideo, inflateQualityVideo, processAndCompressVideo } from "./src/mp4-inflate.mjs";
 import {
     runVFI,
     runHDR,
@@ -1085,6 +1085,24 @@ async function patchSingleFile(item) {
             logMessage(`  Frame Density Inflation: Applied (${targetFPSForInflate}fps).`, "success");
         } else {
             logMessage("  Frame Density Inflation skipped.", "warning");
+        }
+    }
+
+    // ===== NÉN VIDEO XUỐNG DƯỚI 20MB (GIỮ NGUYÊN FPS & QUALITY) =====
+    if (finalBuffer && finalBuffer.byteLength > 20 * 1024 * 1024) {
+        logMessage(`  📦 Compressing video (${(finalBuffer.byteLength / 1024 / 1024).toFixed(1)}MB → <20MB)...`, "info");
+        try {
+            const compressedResult = await processAndCompressVideo(new Uint8Array(finalBuffer));
+            if (compressedResult && compressedResult.newBuffer.byteLength < finalBuffer.byteLength) {
+                finalBuffer = compressedResult.newBuffer;
+                finalBytes = compressedResult.newBytes;
+                finalView = compressedResult.newView;
+                logMessage(`  ✅ Video compressed to ${(finalBuffer.byteLength / 1024 / 1024).toFixed(1)}MB`, "success");
+            } else {
+                logMessage(`  ⚠️ Compression didn't reduce size, using original.`, "warning");
+            }
+        } catch (compressErr) {
+            logMessage(`  ❌ Compression failed: ${compressErr.message}`, "error");
         }
     }
 
