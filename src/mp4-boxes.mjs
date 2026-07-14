@@ -1,3 +1,10 @@
+// ============================================================
+// mp4-boxes.mjs - Parser và helper cho MP4 box
+// ============================================================
+
+/**
+ * Parse tất cả các box trong một khoảng của file MP4
+ */
 export function parseBoxes(bytes, view, startOffset, endOffset) {
     const boxes = [];
     let offset = startOffset;
@@ -34,64 +41,40 @@ export function parseBoxes(bytes, view, startOffset, endOffset) {
     return boxes;
 }
 
+/**
+ * Lấy kích thước header của một box
+ */
 export function getBoxHeaderSize(box) {
     return box.is64Bit ? 16 : 8;
 }
 
-// ===== HÀM FAKE TOÀN BỘ THÔNG TIN VIDEO =====
-export function updateBoxSize(view, offset, box, addedBytes, fakeMode = false) {
-    // FAKE 1: Dung lượng mdat (video data) xuống 4.5MB
-    if (box.type === "mdat") {
-        const fakeSize = 4.5 * 1024 * 1024; // 4.5MB
-        if (box.is64Bit) {
-            view.setBigUint64(offset + 8, BigInt(fakeSize), false);
-        } else {
-            view.setUint32(offset, fakeSize, false);
-        }
-        return;
-    }
-
-    // FAKE 2: Duration (thời lượng) xuống 5 giây
-    if (box.type === "mvhd") {
-        const ver = view.getUint8(offset + 8);
-        const durationPos = offset + (ver === 0 ? 20 : 24);
-        const fakeDuration = 5000; // 5 giây
-        view.setUint32(durationPos, fakeDuration, false);
-        return;
-    }
-
-    // FAKE 3: Bitrate trong stsd box (giảm xuống 1.5Mbps)
-    if (box.type === "stsd") {
-        const contentStart = offset + getBoxHeaderSize(box);
-        if (contentStart + 80 <= box.end) {
-            const bitratePos = contentStart + 20;
-            const fakeBitrate = Math.round(1.5 * 1024 * 1024 / 8); // 1.5Mbps
-            view.setUint32(bitratePos, fakeBitrate, false);
-        }
-        return;
-    }
-
-    // FAKE 4: Sample delta trong stts (tăng tốc phát)
-    if (box.type === "stts" && fakeMode === "hdr") {
-        const entryCount = view.getUint32(offset + 12, false);
-        const base = offset + 16;
-        for (let i = 0; i < entryCount; i++) {
-            const deltaPos = base + i * 8 + 4;
-            if (deltaPos + 4 <= box.end) {
-                view.setUint32(deltaPos, 42, false);
-            }
-        }
-        return;
-    }
-
-    // Cập nhật size box bình thường (nếu không fake)
+/**
+ * Cập nhật kích thước của một box (không fake)
+ */
+export function updateBoxSize(view, offset, box, addedBytes) {
+    // Không fake gì cả - cập nhật size chính xác
     if (box.is64Bit) {
-        view.setBigUint64(offset + 8, BigInt(box.size + addedBytes), false);
+        const newSize = BigInt(box.size + addedBytes);
+        view.setBigUint64(offset + 8, newSize, false);
     } else {
-        view.setUint32(offset, box.size + addedBytes, false);
+        const newSize = box.size + addedBytes;
+        // Kiểm tra overflow: nếu size > 2^32 - 1, cần chuyển sang 64-bit
+        if (newSize > 0xFFFFFFFF) {
+            // Chuyển sang 64-bit
+            box.is64Bit = true;
+            box.size = newSize;
+            // Set size = 1 để báo hiệu 64-bit
+            view.setUint32(offset, 1, false);
+            view.setBigUint64(offset + 8, BigInt(newSize), false);
+        } else {
+            view.setUint32(offset, newSize, false);
+        }
     }
 }
 
+/**
+ * Cập nhật tất cả chunk offsets trong stco/co64 boxes
+ */
 export function updateChunkOffsets(newBytes, newView, boxStart, boxEnd, delta) {
     const containerTypes = new Set(["moov", "trak", "mdia", "minf", "stbl"]);
     for (const box of parseBoxes(newBytes, newView, boxStart, boxEnd)) {
