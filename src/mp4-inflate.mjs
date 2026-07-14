@@ -5,10 +5,8 @@ import {
     updateChunkOffsets,
 } from "./mp4-boxes.mjs";
 
-import { getFFmpeg, destroyFFmpegInstance } from "./video/ffmpeg-manager.js";
-
 // ============================================================
-// PHẦN 1: CÁC HÀM XỬ LÝ MP4 BOX (GIỮ NGUYÊN, KHÔNG SỬA)
+// PHẦN 1: CÁC HÀM XỬ LÝ MP4 BOX
 // ============================================================
 
 const DUMMY_SIZES = {
@@ -156,144 +154,7 @@ function buildStscPatch(inputBytes, inputView, stscBox, origStcoCount) {
 }
 
 // ============================================================
-// PHẦN 2: HÀM NÉN VIDEO TỐI ƯU
-// ============================================================
-
-export async function compressVideoUnder20MB(
-    inputBytes,
-    { logMessage, setProgress, isCancelled, targetMB = 19 } = {},
-) {
-    const log = (msg, type) => logMessage?.(msg, type);
-    const report = (pct) => {
-        try {
-            setProgress?.(pct);
-        } catch (_) {}
-    };
-    const checkCancelled = () => {
-        if (isCancelled?.()) throw new Error("Cancelled");
-    };
-
-    checkCancelled();
-    const instance = await getFFmpeg(
-        (msg, type) => log(msg, type),
-        (pct) => report(Math.round(pct * 0.5)),
-    );
-
-    const inputName = "compress_input.mp4";
-    const outputName = "compress_output.mp4";
-
-    try {
-        await instance.writeFile(inputName, inputBytes);
-        checkCancelled();
-
-        let duration = null;
-        let srcWidth = null;
-        let srcHeight = null;
-        const probeHandler = ({ message }) => {
-            const durMatch = /Duration:\s*(\d+):(\d+):(\d+\.?\d*)/.exec(message || "");
-            if (durMatch && duration === null) {
-                duration =
-                    parseInt(durMatch[1], 10) * 3600 +
-                    parseInt(durMatch[2], 10) * 60 +
-                    parseFloat(durMatch[3]);
-            }
-            const resMatch = /Video:.*?(\d{2,5})x(\d{2,5})/.exec(message || "");
-            if (resMatch && srcWidth === null) {
-                srcWidth = parseInt(resMatch[1], 10);
-                srcHeight = parseInt(resMatch[2], 10);
-            }
-        };
-        instance.on("log", probeHandler);
-        await instance.exec(["-i", inputName]).catch(() => {});
-        if (typeof instance.off === "function") instance.off("log", probeHandler);
-        checkCancelled();
-
-        const MAX_LONG_EDGE = 1080;
-        let scaleFilter = null;
-        if (srcWidth && srcHeight && Math.max(srcWidth, srcHeight) > MAX_LONG_EDGE) {
-            scaleFilter =
-                srcWidth >= srcHeight
-                    ? `scale=${MAX_LONG_EDGE}:-2`
-                    : `scale=-2:${MAX_LONG_EDGE}`;
-            // 👇 ĐÃ XÓA LOG
-        }
-
-        const audioBitrateBps = 96000;
-        let videoBitrateKbps;
-        if (duration && duration > 0.5) {
-            const targetBits = targetMB * 1024 * 1024 * 8;
-            const safetyMargin = 0.92;
-            const rawVideoBps = (targetBits / duration) * safetyMargin - audioBitrateBps;
-            videoBitrateKbps = Math.max(150, Math.round(rawVideoBps / 1000));
-            // 👇 ĐÃ XÓA LOG
-        } else {
-            videoBitrateKbps = 1000;
-            log("  ⚠️ Could not read video duration, using a conservative fallback bitrate.", "warning");
-        }
-
-        checkCancelled();
-        const baseArgs = [
-            "-i", inputName,
-            ...(scaleFilter ? ["-vf", scaleFilter] : []),
-            "-c:v", "libx264",
-            "-b:v", `${videoBitrateKbps}k`,
-            "-maxrate", `${Math.round(videoBitrateKbps * 1.45)}k`,
-            "-bufsize", `${Math.round(videoBitrateKbps * 2)}k`,
-            "-preset", "medium",
-            "-pix_fmt", "yuv420p",
-            "-c:a", "aac",
-            "-b:a", "96k",
-            "-movflags", "+faststart",
-            outputName,
-        ];
-
-        // 👇 ĐÃ XÓA LOG
-        report(50);
-        const ret = await instance.exec(baseArgs);
-        if (ret !== 0 && ret !== undefined) {
-            throw new Error(`FFmpeg exited with code ${ret}`);
-        }
-        checkCancelled();
-
-        const data = await instance.readFile(outputName);
-        if (!data || data.byteLength < 100) {
-            throw new Error("FFmpeg produced an empty or invalid output file.");
-        }
-        report(100);
-        return data;
-    } finally {
-        await instance.deleteFile(inputName).catch(() => {});
-        await instance.deleteFile(outputName).catch(() => {});
-    }
-}
-
-// ============================================================
-// PHẦN 3: HÀM TÍCH HỢP CHÍNH
-// ============================================================
-
-export async function processAndCompressVideo(inputBytes, options = {}) {
-    const compressedBytes = await compressVideoUnder20MB(inputBytes, options);
-    const compressedView = new DataView(
-        compressedBytes.buffer,
-        compressedBytes.byteOffset,
-        compressedBytes.byteLength
-    );
-
-    const finalResult = inflateQualityVideo(compressedBytes, compressedView, 1);
-
-    if (finalResult) {
-        return finalResult;
-    }
-
-    return {
-        newBuffer: compressedBytes.buffer,
-        newBytes: compressedBytes,
-        newView: compressedView
-    };
-}
-
-// ============================================================
-// PHẦN 4: CÁC HÀM CŨ
+// PHẦN 2: HÀM INFLATE FPS
 // ============================================================
 
 export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
@@ -534,6 +395,41 @@ export function inflateQualityVideo(inputBytes, inputView, level = 1) {
     return { newBuffer, newBytes, newView };
 }
 
+// ============================================================
+// PHẦN 3: HÀM TÍCH HỢP CHÍNH (BỎ NÉN 20MB)
+// ============================================================
+
+export async function processAndCompressVideo(inputBytes, options = {}) {
+    // 👇 BỎ QUA NÉN, GIỮ NGUYÊN VIDEO
+    const bytes = new Uint8Array(inputBytes);
+    const view = new DataView(bytes.buffer);
+    
+    // Chỉ chạy inflate quality nếu có
+    const finalResult = inflateQualityVideo(bytes, view, 1);
+    
+    if (finalResult) {
+        return finalResult;
+    }
+    
+    return {
+        newBuffer: bytes.buffer,
+        newBytes: bytes,
+        newView: view
+    };
+}
+
+// ============================================================
+// PHẦN 4: HÀM FAKE VIDEO (BỎ QUA)
+// ============================================================
+
 export async function createFakeVideo(inputBytes) {
-    return processAndCompressVideo(inputBytes);
+    // Chỉ trả về video gốc, không fake
+    const bytes = new Uint8Array(inputBytes);
+    const view = new DataView(bytes.buffer);
+    
+    return {
+        newBuffer: bytes.buffer,
+        newBytes: bytes,
+        newView: view
+    };
 }
