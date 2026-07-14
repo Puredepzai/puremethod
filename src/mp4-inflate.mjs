@@ -5,8 +5,7 @@ import {
     updateChunkOffsets,
 } from "./mp4-boxes.mjs";
 
-// Cài đặt: npm install @ffmpeg/ffmpeg @ffmpeg/util
-import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { getFFmpeg, destroyFFmpegInstance } from "./video/ffmpeg-manager.js";
 
 // ============================================================
 // PHẦN 1: CÁC HÀM XỬ LÝ MP4 BOX (GIỮ NGUYÊN, KHÔNG SỬA)
@@ -161,67 +160,111 @@ function buildStscPatch(inputBytes, inputView, stscBox, origStcoCount) {
 // ============================================================
 
 /**
- * Nén video xuống dưới 20MB với chất lượng cao nhất có thể
- * Sử dụng 2-pass VBR để tối ưu dung lượng/quality
+ * Nén video xuống dưới ~19MB, giữ nguyên toàn bộ thời lượng gốc.
+ *
+ * Trước đây hàm này dùng "-crf 26 -fs 19.5M": ffmpeg sẽ NGỪNG GHI FILE
+ * ngay khi đạt 19.5MB, tức là video output bị CẮT CỤT giữa chừng nếu
+ * bản CRF-26 gốc dài hơn giới hạn đó — video mất đoạn cuối.
+ *
+ * Giờ đổi sang cách đúng hơn: đo thời lượng thật, tính ra bitrate cần
+ * thiết để cả video (từ đầu đến cuối) vừa khít trong ~19MB, rồi encode
+ * với bitrate đó. Video vẫn đủ độ dài, chỉ là bitrate thấp hơn đều
+ * xuyên suốt thay vì bị cắt.
  */
-export async function compressVideoUnder20MB(inputBytes) {
-    const ffmpeg = new FFmpeg();
-    await ffmpeg.load();
+export async function compressVideoUnder20MB(
+    inputBytes,
+    { logMessage, setProgress, isCancelled, targetMB = 19 } = {},
+) {
+    const log = (msg, type) => logMessage?.(msg, type);
+    const report = (pct) => {
+        try {
+            setProgress?.(pct);
+        } catch (_) {}
+    };
+    const checkCancelled = () => {
+        if (isCancelled?.()) throw new Error("Cancelled");
+    };
 
-    const inputName = 'input.mp4';
-    const outputName = 'output.mp4';
+    checkCancelled();
+    const instance = await getFFmpeg(
+        (msg, type) => log(msg, type),
+        (pct) => report(Math.round(pct * 0.5)), // ffmpeg's own progress covers the first half of our bar
+    );
 
-    await ffmpeg.writeFile(inputName, inputBytes);
+    const inputName = "compress_input.mp4";
+    const outputName = "compress_output.mp4";
 
-    // ---- CÁCH 1: NÉN NHANH (ƯU TIÊN TỐC ĐỘ) ----
-    // Dùng cho video dài, cần nén nhanh
-    // await ffmpeg.exec([
-    //     '-i', inputName,
-    //     '-c:v', 'libx264',
-    //     '-crf', '25',
-    //     '-preset', 'medium',
-    //     '-c:a', 'aac',
-    //     '-b:a', '96k',
-    //     '-movflags', '+faststart',
-    //     '-fs', '19.5M',
-    //     outputName
-    // ]);
-
-    // ---- CÁCH 2: NÉN CHẤT LƯỢNG CAO (ƯU TIÊN CHẤT LƯỢNG) ----
-    // Dùng cho video ngắn, cần giữ quality tốt nhất
-    await ffmpeg.exec([
-        '-i', inputName,
-        '-c:v', 'libx265',        // HEVC - quality cao hơn H.264 cùng dung lượng
-        '-crf', '26',             // 18-22 là gần như lossless, 26 là cân bằng
-        '-preset', 'medium',      // slow = quality cao hơn nhưng chậm
-        '-pix_fmt', 'yuv420p',    // Tương thích tốt nhất
-        '-c:a', 'aac',
-        '-b:a', '96k',            // Audio 96k là đủ cho video TikTok
-        '-movflags', '+faststart',
-        '-fs', '19.5M',           // Giới hạn 19.5MB để an toàn
-        '-metadata', 'title=',
-        '-metadata', 'artist=',
-        outputName
-    ]);
-
-    // Nếu libx265 không hỗ trợ, fallback về libx264
     try {
-        const data = await ffmpeg.readFile(outputName);
+        await instance.writeFile(inputName, inputBytes);
+        checkCancelled();
+
+        // ---- Probe real duration from ffmpeg's own stderr log ----
+        let duration = null;
+        const probeHandler = ({ message }) => {
+            if (duration !== null) return;
+            const match = /Duration:\s*(\d+):(\d+):(\d+\.?\d*)/.exec(message || "");
+            if (match) {
+                duration =
+                    parseInt(match[1], 10) * 3600 +
+                    parseInt(match[2], 10) * 60 +
+                    parseFloat(match[3]);
+            }
+        };
+        instance.on("log", probeHandler);
+        await instance.exec(["-i", inputName]).catch(() => {});
+        if (typeof instance.off === "function") instance.off("log", probeHandler);
+        checkCancelled();
+
+        const audioBitrateBps = 96000;
+        let videoBitrateKbps;
+        if (duration && duration > 0.5) {
+            const targetBits = targetMB * 1024 * 1024 * 8;
+            const safetyMargin = 0.92; // headroom for container/muxing overhead
+            const rawVideoBps = (targetBits / duration) * safetyMargin - audioBitrateBps;
+            videoBitrateKbps = Math.max(150, Math.round(rawVideoBps / 1000));
+            log(
+                `  🎯 Duration ${duration.toFixed(1)}s → target bitrate ≈ ${videoBitrateKbps}kbps for <${targetMB}MB`,
+                "info",
+            );
+        } else {
+            // Couldn't read duration — fall back to a conservative flat bitrate
+            // rather than guessing wrong and overshooting the size target.
+            videoBitrateKbps = 1000;
+            log("  ⚠️ Could not read video duration, using a conservative fallback bitrate.", "warning");
+        }
+
+        checkCancelled();
+        const baseArgs = [
+            "-i", inputName,
+            "-c:v", "libx264",
+            "-b:v", `${videoBitrateKbps}k`,
+            "-maxrate", `${Math.round(videoBitrateKbps * 1.45)}k`,
+            "-bufsize", `${Math.round(videoBitrateKbps * 2)}k`,
+            "-preset", "medium",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-b:a", "96k",
+            "-movflags", "+faststart",
+            outputName,
+        ];
+
+        log(`  ⚙️ Encoding at ~${videoBitrateKbps}kbps...`, "info");
+        report(50);
+        const ret = await instance.exec(baseArgs);
+        if (ret !== 0 && ret !== undefined) {
+            throw new Error(`FFmpeg exited with code ${ret}`);
+        }
+        checkCancelled();
+
+        const data = await instance.readFile(outputName);
+        if (!data || data.byteLength < 100) {
+            throw new Error("FFmpeg produced an empty or invalid output file.");
+        }
+        report(100);
         return data;
-    } catch (e) {
-        // Fallback: dùng libx264 với quality cao
-        await ffmpeg.exec([
-            '-i', inputName,
-            '-c:v', 'libx264',
-            '-crf', '23',
-            '-preset', 'slow',
-            '-c:a', 'aac',
-            '-b:a', '128k',
-            '-movflags', '+faststart',
-            '-fs', '19.5M',
-            outputName
-        ]);
-        return await ffmpeg.readFile(outputName);
+    } finally {
+        await instance.deleteFile(inputName).catch(() => {});
+        await instance.deleteFile(outputName).catch(() => {});
     }
 }
 
@@ -233,10 +276,10 @@ export async function compressVideoUnder20MB(inputBytes) {
  * HÀM CHÍNH: Nén video xuống dưới 20MB với chất lượng cao nhất
  * Đây là hàm duy nhất bạn cần gọi từ bên ngoài
  */
-export async function processAndCompressVideo(inputBytes) {
-    // Bước 1: Nén video
-    const compressedBytes = await compressVideoUnder20MB(inputBytes);
-    
+export async function processAndCompressVideo(inputBytes, options = {}) {
+    // Bước 1: Nén video (giữ nguyên độ dài, hạ bitrate cho vừa dung lượng)
+    const compressedBytes = await compressVideoUnder20MB(inputBytes, options);
+
     // Bước 2: Tối ưu metadata (không làm thay đổi chất lượng)
     const compressedView = new DataView(
         compressedBytes.buffer,
@@ -262,9 +305,198 @@ export async function processAndCompressVideo(inputBytes) {
 // ============================================================
 
 export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
-    // Code cũ - KHÔNG KHUYẾN KHÍCH DÙNG
-    // Có thể gây lỗi video và bị TikTok phát hiện
-    return null; // Tắt chức năng này
+    const fileSize = inputBytes.length;
+    const topBoxes = parseBoxes(inputBytes, inputView, 0, fileSize);
+    const moovBox = topBoxes.find((b) => b.type === "moov");
+    if (!moovBox) return null;
+    if (multiplier < 2) return null;
+
+    const located = findVideoStbl(inputBytes, inputView, moovBox);
+    if (!located) return null;
+
+    const { stblBox } = located;
+    const stblChildren = parseBoxes(
+        inputBytes,
+        inputView,
+        stblBox.offset + getBoxHeaderSize(stblBox),
+        stblBox.end,
+    );
+
+    const sttsBox = stblChildren.find((b) => b.type === "stts");
+    const stszBox = stblChildren.find((b) => b.type === "stsz");
+    const stcoBox = stblChildren.find((b) => b.type === "stco");
+    const co64Box = stblChildren.find((b) => b.type === "co64");
+    const stscBox = stblChildren.find((b) => b.type === "stsc");
+    if (!sttsBox || !stszBox || !stscBox) return null;
+    if (!stcoBox && !co64Box) return null;
+
+    const sttsEntryCount = inputView.getUint32(sttsBox.offset + 12, false);
+    let realCount = 0;
+    let totalDuration = 0;
+    const sttsBase = sttsBox.offset + 16;
+    for (let i = 0; i < sttsEntryCount; i++) {
+        const count = inputView.getUint32(sttsBase + i * 8, false);
+        const delta = inputView.getUint32(sttsBase + i * 8 + 4, false);
+        realCount += count;
+        totalDuration += count * delta;
+    }
+    if (realCount === 0) return null;
+    const sampleDelta = Math.round(totalDuration / realCount);
+
+    const codec = detectCodec(inputBytes, stblBox);
+    const dummySize = DUMMY_SIZES[codec] || DEFAULT_DUMMY_SIZE;
+
+    const origChunkCount = stcoBox
+        ? inputView.getUint32(stcoBox.offset + 12, false)
+        : inputView.getUint32(co64Box.offset + 12, false);
+
+    const newStts = buildSttsAtom(realCount, sampleDelta, multiplier);
+    const newStsz = buildStszAtom(
+        inputBytes,
+        inputView,
+        stszBox,
+        realCount,
+        multiplier,
+        dummySize,
+    );
+    const newStsc = buildStscPatch(
+        inputBytes,
+        inputView,
+        stscBox,
+        origChunkCount,
+    );
+
+    const sttsDelta = newStts.length - sttsBox.size;
+    const stszDelta = newStsz.length - stszBox.size;
+    const stscDelta = newStsc.length - stscBox.size;
+    const fakeCount = realCount * (multiplier - 1);
+    const chunkBox = stcoBox || co64Box;
+    const chunkEntrySize = stcoBox ? 4 : 8;
+    const chunkDelta = fakeCount * chunkEntrySize;
+    const moovDelta = sttsDelta + stszDelta + stscDelta + chunkDelta;
+
+    const safeOffset = fileSize + moovDelta;
+    const newChunkBox = stcoBox
+        ? buildStcoAtom(
+              inputView,
+              stcoBox,
+              origChunkCount,
+              realCount,
+              safeOffset,
+              moovDelta,
+              multiplier,
+          )
+        : buildCo64Atom(
+              inputView,
+              co64Box,
+              origChunkCount,
+              realCount,
+              safeOffset,
+              moovDelta,
+              multiplier,
+          );
+
+    const replacements = [
+        { box: sttsBox, bytes: newStts },
+        { box: stszBox, bytes: newStsz },
+        { box: stscBox, bytes: newStsc },
+        { box: chunkBox, bytes: newChunkBox },
+    ].sort((a, b) => a.box.offset - b.box.offset);
+
+    const paddingSize = fakeCount * dummySize;
+    const newSize = fileSize + moovDelta + paddingSize;
+    const newBuffer = new ArrayBuffer(newSize);
+    const newBytes = new Uint8Array(newBuffer);
+    const newView = new DataView(newBuffer);
+
+    let readPos = 0;
+    let writePos = 0;
+    for (const rep of replacements) {
+        newBytes.set(inputBytes.subarray(readPos, rep.box.offset), writePos);
+        writePos += rep.box.offset - readPos;
+        newBytes.set(rep.bytes, writePos);
+        writePos += rep.bytes.length;
+        readPos = rep.box.end;
+    }
+    newBytes.set(inputBytes.subarray(readPos, fileSize), writePos);
+
+    updateBoxSize(newView, stblBox.offset, stblBox, moovDelta);
+    updateBoxSize(newView, located.minfBox.offset, located.minfBox, moovDelta);
+    updateBoxSize(newView, located.mdiaBox.offset, located.mdiaBox, moovDelta);
+    updateBoxSize(newView, located.trak.offset, located.trak, moovDelta);
+    updateBoxSize(newView, moovBox.offset, moovBox, moovDelta);
+
+    const mdatBox = topBoxes.find((b) => b.type === "mdat");
+    const moovBeforeMdat = mdatBox && moovBox.offset < mdatBox.offset;
+
+    if (moovBeforeMdat) {
+        const updatedMoovSize = newView.getUint32(moovBox.offset, false);
+        const moovEnd = moovBox.offset + updatedMoovSize;
+        const moovChildren = parseBoxes(
+            newBytes,
+            newView,
+            moovBox.offset + getBoxHeaderSize(moovBox),
+            moovEnd,
+        );
+        for (const trak of moovChildren.filter((b) => b.type === "trak")) {
+            const trakChildren = parseBoxes(
+                newBytes,
+                newView,
+                trak.offset + getBoxHeaderSize(trak),
+                trak.end,
+            );
+            const mdiaBox2 = trakChildren.find((b) => b.type === "mdia");
+            if (!mdiaBox2) continue;
+            const mdiaChildren = parseBoxes(
+                newBytes,
+                newView,
+                mdiaBox2.offset + getBoxHeaderSize(mdiaBox2),
+                mdiaBox2.end,
+            );
+            const minfBox2 = mdiaChildren.find((b) => b.type === "minf");
+            if (!minfBox2) continue;
+            const minfChildren = parseBoxes(
+                newBytes,
+                newView,
+                minfBox2.offset + getBoxHeaderSize(minfBox2),
+                minfBox2.end,
+            );
+            const stblBox2 = minfChildren.find((b) => b.type === "stbl");
+            if (!stblBox2 || stblBox2.offset === stblBox.offset) continue;
+            const stblChildren2 = parseBoxes(
+                newBytes,
+                newView,
+                stblBox2.offset + getBoxHeaderSize(stblBox2),
+                stblBox2.end,
+            );
+            const stcoBox2 = stblChildren2.find((b) => b.type === "stco");
+            if (stcoBox2) {
+                const count = newView.getUint32(stcoBox2.offset + 12, false);
+                for (let i = 0; i < count; i++) {
+                    const pos = stcoBox2.offset + 16 + i * 4;
+                    newView.setUint32(
+                        pos,
+                        newView.getUint32(pos, false) + moovDelta,
+                        false,
+                    );
+                }
+            }
+            const co64Box2 = stblChildren2.find((b) => b.type === "co64");
+            if (co64Box2) {
+                const count = newView.getUint32(co64Box2.offset + 12, false);
+                for (let i = 0; i < count; i++) {
+                    const pos = co64Box2.offset + 16 + i * 8;
+                    newView.setBigUint64(
+                        pos,
+                        newView.getBigUint64(pos, false) + BigInt(moovDelta),
+                        false,
+                    );
+                }
+            }
+        }
+    }
+
+    return { newBuffer, newBytes, newView };
 }
 
 export function inflateQualityVideo(inputBytes, inputView, level = 1) {
