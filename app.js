@@ -1,4 +1,4 @@
-    import {
+import {
     ChevronDown,
     Cpu,
     Download,
@@ -55,6 +55,7 @@ const MOBILE_SCROLL_DELAY_MS = 150;
 const DOWNLOAD_ANCHOR_CLEANUP_MS = 100;
 const SAFE_THUMBNAIL_PREFIX = "data:image/jpeg;base64,";
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
+const TARGET_FPS = 600; // 👈 LUÔN LÀ 600 FPS
 
 // ============================================================
 // BIẾN TOÀN CỤC
@@ -546,12 +547,12 @@ function updatePatchButton() {
         f => f.status === "success" && f.checked && f.patchedBuffer,
     ).length;
 
+    // 👇 ĐÃ XÓA fps, LUÔN LÀ 600
     const cur = {
         vfi: document.getElementById("enableInterpolation")?.checked || false,
         hdr: document.getElementById("enableHDR")?.checked || false,
         res: document.getElementById("outputResolution")?.value || "1080",
         turbo: document.getElementById("enableTurbo")?.checked || false,
-        fps: document.getElementById("targetFPS")?.value || "120",
     };
     const settingsChanged = lastSettings && JSON.stringify(lastSettings) !== JSON.stringify(cur);
 
@@ -979,7 +980,8 @@ async function patchSingleFile(item) {
         : 1080;
 
     const enableTurbo = false;
-    const targetFPS = parseInt(document.getElementById("targetFPS")?.value || "120");
+    // 👇 LUÔN LÀ 600 FPS
+    const targetFPS = TARGET_FPS;
 
     let sourceBuffer = null;
     let movThumbnailBuffer = null;
@@ -1004,7 +1006,7 @@ async function patchSingleFile(item) {
 
     // ===== VFI (tăng FPS) =====
     if (enableInterpolation?.checked) {
-        logMessage("Starting VFI Engine...", "info");
+        logMessage(`🎞️ Starting VFI Engine (${targetFPS} FPS)...`, "info");
         if (isCancelled) throw new Error("Cancelled");
 
         const fileBytes = new Uint8Array(await item.file.arrayBuffer());
@@ -1025,14 +1027,14 @@ async function patchSingleFile(item) {
             () => isCancelled,
             logMessage,
             debouncedSetProgress,
-            enableTurbo,
-            targetFPS
+            enableTurbo
+            // 👆 ĐÃ XÓA targetFPS - hàm runVFI tự dùng TARGET_FPS
         );
         sourceBuffer = vfiResult.buffer;
         if (vfiResult.thumbnail) {
             movThumbnailBuffer = vfiResult.thumbnail;
         }
-        logMessage(applyHDR ? "60fps HDR processing complete." : "VFI processing complete.", "success");
+        logMessage(applyHDR ? "600fps HDR processing complete." : "VFI processing complete.", "success");
     } 
     // ===== HDR (chỉ tăng quality) =====
     else if (enableHDR?.checked) {
@@ -1089,7 +1091,7 @@ async function patchSingleFile(item) {
         inputBytes = new Uint8Array(sourceBuffer);
         inputView = new DataView(sourceBuffer);
         logMessage(
-            `  Source: ${enableInterpolation?.checked ? "VFI 60fps" : "HDR10"} output`,
+            `  Source: ${enableInterpolation?.checked ? "VFI 600fps" : "HDR10"} output`,
             "info",
         );
     } else {
@@ -1119,27 +1121,24 @@ async function patchSingleFile(item) {
 
     // ===== INFLATE FPS (nếu bật VFI) =====
     if (enableInterpolation?.checked) {
-        const targetFPSForInflate = parseInt(document.getElementById("targetFPS")?.value || "120");
         const baseFPS = 60;
-        const multiplier = Math.max(1, Math.round(targetFPSForInflate / baseFPS));
+        const multiplier = Math.max(1, Math.round(TARGET_FPS / baseFPS));
         const inflateResult = inflateSampleTableVideo(finalBytes, finalView, multiplier);
         if (inflateResult) {
             finalBuffer = inflateResult.newBuffer;
             finalBytes = inflateResult.newBytes;
             finalView = new DataView(finalBuffer);
-            logMessage(`  Frame Density Inflation: Applied (${targetFPSForInflate}fps).`, "success");
+            logMessage(`  Frame Density Inflation: Applied (${TARGET_FPS}fps).`, "success");
         } else {
             logMessage("  Frame Density Inflation skipped.", "warning");
         }
     }
 
-    // ===== NÉN VIDEO XUỐNG DƯỚI 20MB (GIỮ NGUYÊN FPS & QUALITY) =====
-    // ==== QUAN TRỌNG: Luôn kiểm tra và nén nếu > 20MB ====
+    // ===== NÉN VIDEO XUỐNG DƯỚI 20MB =====
     const currentSize = finalBuffer.byteLength;
     if (currentSize > MAX_FILE_SIZE_BYTES) {
         logMessage(`  📦 Compressing video (${(currentSize / 1024 / 1024).toFixed(1)}MB → <20MB)...`, "info");
         try {
-            // Sử dụng processAndCompressVideo từ mp4-inflate.mjs
             const compressedResult = await processAndCompressVideo(new Uint8Array(finalBuffer), {
                 logMessage,
                 setProgress: debouncedSetProgress,
@@ -1157,7 +1156,6 @@ async function patchSingleFile(item) {
             }
         } catch (compressErr) {
             logMessage(`  ❌ Compression failed: ${compressErr.message}`, "error");
-            // Vẫn giữ nguyên video dù nén lỗi
         }
     } else {
         logMessage(`  ✅ Video already under 20MB (${(currentSize / 1024 / 1024).toFixed(1)}MB)`, "info");
@@ -1616,12 +1614,12 @@ patchBtn.addEventListener("click", async () => {
     }
 
     currentFlowState = "completed";
+    // 👇 ĐÃ XÓA fps
     lastSettings = {
         vfi: document.getElementById("enableInterpolation")?.checked || false,
         hdr: document.getElementById("enableHDR")?.checked || false,
         res: document.getElementById("outputResolution")?.value || "1080",
         turbo: document.getElementById("enableTurbo")?.checked || false,
-        fps: document.getElementById("targetFPS")?.value || "120",
     };
     setProgress(100);
     releaseWakeLock();
@@ -1817,4 +1815,4 @@ function initializeApp() {
     updatePatchButton();
 }
 
-initializeApp(); 
+initializeApp();
