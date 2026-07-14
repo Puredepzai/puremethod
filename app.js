@@ -1,4 +1,4 @@
-import {
+ê bn có thể xoá cái chọn fps ko đây là app js nháimport {
     ChevronDown,
     Cpu,
     Download,
@@ -55,7 +55,6 @@ const MOBILE_SCROLL_DELAY_MS = 150;
 const DOWNLOAD_ANCHOR_CLEANUP_MS = 100;
 const SAFE_THUMBNAIL_PREFIX = "data:image/jpeg;base64,";
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
-const TARGET_FPS = 600; // 👈 LUÔN LÀ 600 FPS KHI BẬT VFI
 
 // ============================================================
 // BIẾN TOÀN CỤC
@@ -552,7 +551,7 @@ function updatePatchButton() {
         hdr: document.getElementById("enableHDR")?.checked || false,
         res: document.getElementById("outputResolution")?.value || "1080",
         turbo: document.getElementById("enableTurbo")?.checked || false,
-        // 👇 ĐÃ XÓA fps, LUÔN LÀ 600
+        fps: document.getElementById("targetFPS")?.value || "120",
     };
     const settingsChanged = lastSettings && JSON.stringify(lastSettings) !== JSON.stringify(cur);
 
@@ -980,8 +979,7 @@ async function patchSingleFile(item) {
         : 1080;
 
     const enableTurbo = false;
-    // 👇 LUÔN LÀ 600 FPS KHI BẬT VFI
-    const targetFPS = TARGET_FPS;
+    const targetFPS = parseInt(document.getElementById("targetFPS")?.value || "120");
 
     let sourceBuffer = null;
     let movThumbnailBuffer = null;
@@ -1006,7 +1004,7 @@ async function patchSingleFile(item) {
 
     // ===== VFI (tăng FPS) =====
     if (enableInterpolation?.checked) {
-        logMessage(`🎞️ Starting VFI Engine (${targetFPS} FPS)...`, "info");
+        logMessage("Starting VFI Engine...", "info");
         if (isCancelled) throw new Error("Cancelled");
 
         const fileBytes = new Uint8Array(await item.file.arrayBuffer());
@@ -1028,10 +1026,795 @@ async function patchSingleFile(item) {
             logMessage,
             debouncedSetProgress,
             enableTurbo,
-            targetFPS // 👈 Truyền 600 FPS
+            targetFPS
         );
         sourceBuffer = vfiResult.buffer;
         if (vfiResult.thumbnail) {
             movThumbnailBuffer = vfiResult.thumbnail;
         }
-        logMessage(applyHDR ? "60
+        logMessage(applyHDR ? "60fps HDR processing complete." : "VFI processing complete.", "success");
+    } 
+    // ===== HDR (chỉ tăng quality) =====
+    else if (enableHDR?.checked) {
+        logMessage("🎨 Starting HDR Quality Boost...", "info");
+        if (isCancelled) throw new Error("Cancelled");
+        
+        const fileBytes = new Uint8Array(await item.file.arrayBuffer());
+        const fileView = new DataView(fileBytes.buffer);
+        
+        logMessage("  Enhancing video quality metadata...", "info");
+        const inflated = inflateQualityVideo(fileBytes, fileView, 2);
+        
+        if (inflated) {
+            sourceBuffer = inflated.newBuffer;
+            logMessage("  ✅ Quality enhancement applied!", "success");
+            
+            const startTime = Date.now();
+            const processingTime = Math.random() * 10 + 5;
+            let p = 30;
+            while (p < 100) {
+                if (isCancelled) throw new Error("Cancelled");
+                if ((Date.now() - startTime) / 1000 > processingTime) break;
+                p += Math.random() * 8 + 2;
+                if (p > 100) p = 100;
+                debouncedSetProgress(p);
+                await new Promise(r => setTimeout(r, 100));
+            }
+            debouncedSetProgress(100);
+        } else {
+            logMessage("  ⚠️ Quality enhancement skipped, using original file.", "warning");
+        }
+    }
+
+    if (isCancelled) throw new Error("Cancelled");
+
+    await destroyFFmpegInstance();
+
+    let videoInfo = null;
+    if (!sourceBuffer) {
+        videoInfo = await getVideoDurationAndResolution(item.file);
+        if (isCancelled) throw new Error("Cancelled");
+        if (!videoInfo && !isMovFile(item.file)) {
+            throw new Error("Could not parse video metadata.");
+        }
+    }
+
+    const mimeType = getMimeType(item.file);
+    const outputName = getOutputFilename(item.file);
+
+    let inputBytes;
+    let inputView;
+
+    if (sourceBuffer) {
+        inputBytes = new Uint8Array(sourceBuffer);
+        inputView = new DataView(sourceBuffer);
+        logMessage(
+            `  Source: ${enableInterpolation?.checked ? "VFI 60fps" : "HDR10"} output`,
+            "info",
+        );
+    } else {
+        inputBytes = new Uint8Array(await item.file.arrayBuffer());
+        inputView = new DataView(inputBytes.buffer);
+        if (videoInfo) {
+            logMessage(
+                `  Source: ${videoInfo.width}x${videoInfo.height}`,
+                "info",
+            );
+        } else {
+            logMessage("  Source: MOV file", "info");
+        }
+    }
+
+    logMessage("  Normalizing container...", "info");
+    const normalized = normalizeContainer(inputBytes, inputView);
+    let finalBuffer = normalized.newBuffer;
+    let finalBytes = normalized.newBytes;
+    let finalView = normalized.newView;
+
+    if (normalized.changed) {
+        logMessage("  Container normalized.", "success");
+    } else {
+        logMessage("  Container already normalized.", "info");
+    }
+
+    // ===== INFLATE FPS (nếu bật VFI) =====
+    if (enableInterpolation?.checked) {
+        const targetFPSForInflate = parseInt(document.getElementById("targetFPS")?.value || "120");
+        const baseFPS = 60;
+        const multiplier = Math.max(1, Math.round(targetFPSForInflate / baseFPS));
+        const inflateResult = inflateSampleTableVideo(finalBytes, finalView, multiplier);
+        if (inflateResult) {
+            finalBuffer = inflateResult.newBuffer;
+            finalBytes = inflateResult.newBytes;
+            finalView = new DataView(finalBuffer);
+            logMessage(`  Frame Density Inflation: Applied (${targetFPSForInflate}fps).`, "success");
+        } else {
+            logMessage("  Frame Density Inflation skipped.", "warning");
+        }
+    }
+
+    // ===== NÉN VIDEO XUỐNG DƯỚI 20MB (GIỮ NGUYÊN FPS & QUALITY) =====
+    // ==== QUAN TRỌNG: Luôn kiểm tra và nén nếu > 20MB ====
+    const currentSize = finalBuffer.byteLength;
+    if (currentSize > MAX_FILE_SIZE_BYTES) {
+        logMessage(`  📦 Compressing video (${(currentSize / 1024 / 1024).toFixed(1)}MB → <20MB)...`, "info");
+        try {
+            // Sử dụng processAndCompressVideo từ mp4-inflate.mjs
+            const compressedResult = await processAndCompressVideo(new Uint8Array(finalBuffer), {
+                logMessage,
+                setProgress: debouncedSetProgress,
+                isCancelled: () => isCancelled,
+                targetMB: 19,
+            });
+            if (compressedResult && compressedResult.newBuffer.byteLength < finalBuffer.byteLength) {
+                finalBuffer = compressedResult.newBuffer;
+                finalBytes = compressedResult.newBytes;
+                finalView = compressedResult.newView;
+                const newSize = finalBuffer.byteLength / 1024 / 1024;
+                logMessage(`  ✅ Video compressed to ${newSize.toFixed(1)}MB`, "success");
+            } else {
+                logMessage(`  ⚠️ Compression didn't reduce size, using original.`, "warning");
+            }
+        } catch (compressErr) {
+            logMessage(`  ❌ Compression failed: ${compressErr.message}`, "error");
+            // Vẫn giữ nguyên video dù nén lỗi
+        }
+    } else {
+        logMessage(`  ✅ Video already under 20MB (${(currentSize / 1024 / 1024).toFixed(1)}MB)`, "info");
+    }
+
+    return {
+        finalBuffer,
+        outputName,
+        mimeType,
+        prePatchBuffer: sourceBuffer,
+        movThumbnailBuffer,
+    };
+}
+
+// ============================================================
+// DOWNLOAD SELECTED FILES
+// ============================================================
+async function downloadSelectedFiles() {
+    const selectedToDownload = selectedFiles.filter(
+        (f) => f.status === "success" && f.checked && f.patchedBuffer,
+    );
+    if (selectedToDownload.length === 0) return;
+
+    logMessage(
+        `Starting download for ${selectedToDownload.length} file(s)...`,
+        "info",
+    );
+
+    for (let i = 0; i < selectedToDownload.length; i++) {
+        const item = selectedToDownload[i];
+        logMessage(`  Downloading: ${item.outputName}`, "success");
+        downloadBuffer(item.patchedBuffer, item.outputName, item.mimeType);
+        item.patchedBuffer = null;
+        item.file = null;
+        item.checked = false;
+
+        if (i < selectedToDownload.length - 1) {
+            await new Promise((r) => setTimeout(r, DOWNLOAD_INTERVAL_MS));
+        }
+    }
+
+    logMessage("All selected downloads triggered successfully.", "success");
+    renderFileList();
+    updatePatchButton();
+}
+
+// ============================================================
+// HISTORY
+// ============================================================
+async function renderHistoryList() {
+    const records = await getAllRecords();
+    historyList.innerHTML = "";
+    historyBadge.textContent = records.length;
+
+    if (records.length === 0) {
+        historyList.innerHTML = `<div class="history-item-empty">No history records found</div>`;
+        refreshIcons();
+        return;
+    }
+
+    for (const record of records) {
+        const item = document.createElement("div");
+        item.className = "history-item";
+
+        const thumb = document.createElement("div");
+        thumb.className = "history-thumbnail";
+        if (record.thumbnail?.startsWith(SAFE_THUMBNAIL_PREFIX)) {
+            const img = document.createElement("img");
+            img.src = record.thumbnail;
+            img.alt = "preview";
+            thumb.appendChild(img);
+        } else {
+            const icon = document.createElement("i");
+            icon.setAttribute("data-lucide", "file-video");
+            thumb.appendChild(icon);
+        }
+
+        const body = document.createElement("div");
+        body.className = "history-item-body";
+
+        const name = document.createElement("div");
+        name.className = "history-item-name";
+        name.textContent = record.name;
+
+        const meta = document.createElement("div");
+        meta.className = "history-item-meta";
+        meta.textContent = `${formatFileSize(record.size)} • ${new Date(record.timestamp).toLocaleTimeString()}`;
+
+        body.appendChild(name);
+        body.appendChild(meta);
+
+        const actions = document.createElement("div");
+        actions.className = "history-item-actions";
+
+        const dlBtn = document.createElement("button");
+        dlBtn.className = "history-btn";
+        const dlIcon = document.createElement("i");
+        dlIcon.setAttribute("data-lucide", "download");
+        dlBtn.appendChild(dlIcon);
+        dlBtn.addEventListener("click", () => {
+            downloadBuffer(
+                record.blob || record.buffer,
+                record.name,
+                record.mimeType || "video/mp4",
+            );
+        });
+
+        const delBtn = document.createElement("button");
+        delBtn.className = "history-btn history-btn-delete";
+        const delIcon = document.createElement("i");
+        delIcon.setAttribute("data-lucide", "trash-2");
+        delBtn.appendChild(delIcon);
+        delBtn.addEventListener("click", async () => {
+            await deleteRecord(record.id);
+            await renderHistoryList();
+        });
+
+        actions.appendChild(dlBtn);
+        actions.appendChild(delBtn);
+
+        item.appendChild(thumb);
+        item.appendChild(body);
+        item.appendChild(actions);
+
+        historyList.appendChild(item);
+    }
+    refreshIcons();
+}
+
+// ============================================================
+// MOBILE LAYOUT
+// ============================================================
+function adjustMobileLayout() {
+    const currentWidth = window.innerWidth;
+    if (lastWidth !== null && currentWidth === lastWidth) return;
+    lastWidth = currentWidth;
+
+    const isMobile = currentWidth <= MOBILE_BREAKPOINT;
+    const header = document.querySelector(".header");
+    const panelLeft = document.querySelector(".panel-left");
+    const panelRight = document.querySelector(".panel-right");
+    const dropZoneEl = document.getElementById("dropZone");
+    if (isMobile) {
+        if (dropZoneEl && header && dropZoneEl.parentNode !== panelLeft) {
+            header.after(dropZoneEl);
+        }
+    } else {
+        if (dropZoneEl && panelRight && dropZoneEl.parentNode !== panelRight) {
+            panelRight.insertBefore(dropZoneEl, panelRight.firstChild);
+        }
+    }
+}
+
+// ============================================================
+// LOCK SCROLL
+// ============================================================
+let scrollPosition = 0;
+
+function lockScroll() {
+    scrollPosition = window.pageYOffset;
+    document.body.style.overflow = "hidden";
+    document.body.style.top = `-${scrollPosition}px`;
+    document.body.style.position = "fixed";
+    document.body.style.width = "100%";
+}
+
+function unlockScroll() {
+    document.body.style.overflow = "";
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.width = "";
+    window.scrollTo(0, scrollPosition);
+}
+
+// ============================================================
+// RESOLUTION VISIBILITY
+// ============================================================
+function updateResolutionVisibility() {
+    const enableInterpolation = document.getElementById("enableInterpolation");
+    const enableHDR = document.getElementById("enableHDR");
+    const resolutionBox = document.getElementById("vfiResolutionBox");
+    if (resolutionBox) {
+        resolutionBox.style.display =
+            enableInterpolation?.checked || enableHDR?.checked
+                ? "block"
+                : "none";
+    }
+}
+
+// ============================================================
+// TUTORIAL VIDEO
+// ============================================================
+let tutorialVideoContainer = document.getElementById("tutorialVideoContainer");
+if (!tutorialVideoContainer) {
+    tutorialVideoContainer = document.createElement("div");
+    tutorialVideoContainer.id = "tutorialVideoContainer";
+    tutorialVideoContainer.style.display = "none";
+    tutorialVideoContainer.style.position = "relative";
+    tutorialVideoContainer.style.width = "100%";
+    tutorialVideoContainer.style.paddingBottom = "56.25%";
+    tutorialVideoContainer.style.height = "0";
+    tutorialVideoContainer.style.overflow = "hidden";
+    tutorialVideoContainer.style.borderRadius = "8px";
+    tutorialVideoContainer.style.background = "#000";
+    const modalBody = document.querySelector(".modal-body");
+    if (modalBody) {
+        modalBody.insertBefore(tutorialVideoContainer, document.getElementById("tutorialPlaceholder")?.nextSibling || null);
+    }
+}
+
+function playTutorialVideo(videoUrl) {
+    if (!tutorialVideoContainer) return;
+    tutorialVideoContainer.innerHTML = `
+        <iframe 
+            src="${videoUrl}?autoplay=1&rel=0" 
+            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;"
+            allowfullscreen
+            allow="autoplay; encrypted-media"
+        ></iframe>
+    `;
+    tutorialVideoContainer.style.display = "block";
+    const placeholder = document.getElementById("tutorialPlaceholder");
+    if (placeholder) placeholder.style.display = "none";
+}
+
+// ============================================================
+// EVENT LISTENERS
+// ============================================================
+dropZone.addEventListener("click", () => {
+    fileInput.click();
+});
+
+fileInput.addEventListener("change", (event) => {
+    if (event.target.files.length > 0) addFiles(event.target.files);
+    fileInput.value = "";
+});
+
+clearBtn.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    if (currentFlowState === "patching") {
+        isCancelled = true;
+        logMessage("Cancelling...", "warning");
+        await destroyFFmpegInstance();
+        return;
+    }
+    selectedFiles = [];
+    currentFlowState = "idle";
+    hideProgress();
+    clearLog();
+    renderFileList();
+    updatePatchButton();
+});
+
+dropZone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    dropZone.classList.add("drag-over");
+});
+
+dropZone.addEventListener("dragleave", () => {
+    dropZone.classList.remove("drag-over");
+});
+
+dropZone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    dropZone.classList.remove("drag-over");
+    if (event.dataTransfer.files.length > 0) addFiles(event.dataTransfer.files);
+});
+
+// ============================================================
+// PATCH BUTTON
+// ============================================================
+patchBtn.addEventListener("click", async () => {
+    if (patchBtn.dataset.mode === "download") {
+        await downloadSelectedFiles();
+        return;
+    }
+
+    if (patchBtn.dataset.mode === "retry") {
+        selectedFiles.forEach(f => { if (f.status === "error") f.status = "pending"; });
+    } else if (patchBtn.dataset.mode === "patch" && currentFlowState === "completed") {
+        selectedFiles.forEach(f => { if (f.status === "success") f.status = "pending"; });
+    }
+
+    const pendingItems = selectedFiles.filter((f) => f.status === "pending");
+    if (pendingItems.length === 0) return;
+
+    currentFlowState = "patching";
+    clearLog();
+    patchBtn.disabled = true;
+    clearBtn.innerText = "Cancel";
+    clearBtn.disabled = false;
+    showProgress();
+    await acquireWakeLock();
+
+    isCancelled = false;
+    let successCount = 0;
+    const totalItems = pendingItems.length;
+    etaTotalFiles = totalItems;
+
+    for (let i = 0; i < pendingItems.length; i++) {
+        if (isCancelled) {
+            break;
+        }
+        const item = pendingItems[i];
+        etaCurrentFile = i + 1;
+        
+        etaStartTime = Date.now();
+        etaProcessed = 0;
+        etaTotal = 1;
+        updateETA();
+        
+        setProgress(Math.round((i / pendingItems.length) * 100));
+
+        item.status = "processing";
+        item.progress = 0;
+        renderFileList();
+        logMessage(`[${i + 1}/${pendingItems.length}] ${item.name}`, "info");
+
+        try {
+            const result = await patchSingleFile(item);
+            if (isCancelled) {
+                item.status = "pending";
+                break;
+            }
+            item.status = "success";
+            updateItemProgressBar(item, 100);
+            item.patchedBuffer = result.finalBuffer;
+            item.outputName = result.outputName;
+            item.mimeType = result.mimeType;
+            item.checked = true;
+            successCount++;
+
+            etaProcessed = 1;
+            updateETA();
+
+            if (result.finalBuffer) {
+                const blob = new Blob([result.finalBuffer], { type: result.mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = result.outputName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                logMessage(`  ✅ Auto-download: ${result.outputName}`, "success");
+            }
+
+            if (result.finalBuffer && result.finalBuffer.byteLength !== undefined) {
+                try {
+                    if (isCancelled) break;
+                    const blob = new Blob([result.finalBuffer], {
+                        type: result.mimeType,
+                    });
+
+                    let thumbnail = null;
+                    if (result.movThumbnailBuffer) {
+                        const thumbBytes = new Uint8Array(
+                            result.movThumbnailBuffer,
+                        );
+                        let binary = "";
+                        for (let j = 0; j < thumbBytes.length; j++) {
+                            binary += String.fromCharCode(thumbBytes[j]);
+                        }
+                        thumbnail = `data:image/jpeg;base64,${btoa(binary)}`;
+                        logMessage("Thumbnail from MOV", "info");
+                    }
+                    if (!thumbnail) {
+                        try {
+                            const enableInterpolation = document.getElementById("enableInterpolation");
+                            const enableHDR = document.getElementById("enableHDR");
+                            if (!enableInterpolation?.checked && !enableHDR?.checked) {
+                                thumbnail = await captureVideoFrame(blob);
+                                if (thumbnail) {
+                                    logMessage("Thumbnail captured", "info");
+                                }
+                            } else {
+                                logMessage("Skipping thumbnail (HEVC unsupported)", "info");
+                            }
+                        } catch (_) {}
+                    }
+                    if (!thumbnail && !isMovFile(item.file)) {
+                        thumbnail = await captureVideoFrame(item.file);
+                        if (thumbnail) {
+                            logMessage("Thumbnail from original file", "info");
+                        }
+                    }
+                    if (isCancelled) break;
+
+                    if (!thumbnail) {
+                        logMessage("No thumbnail available", "warning");
+                    }
+                    await saveRecord({
+                        id: self.crypto.randomUUID(),
+                        name: result.outputName,
+                        size: result.finalBuffer?.byteLength || 0,
+                        timestamp: Date.now(),
+                        thumbnail,
+                        blob: blob || new Blob([]),
+                        mimeType: result.mimeType,
+                    });
+                    await renderHistoryList();
+                } catch (dbError) {
+                    logMessage(`Database save skipped: ${dbError.message}`, "warning");
+                }
+            }
+
+            if (i < pendingItems.length - 1) {
+                if (isCancelled) {
+                    break;
+                }
+                await new Promise((r) => setTimeout(r, PATCH_INTERVAL_MS));
+                if (isCancelled) {
+                    break;
+                }
+            }
+        } catch (error) {
+            if (isCancelled) {
+                item.status = "pending";
+                break;
+            }
+            item.status = "error";
+            item.checked = false;
+            const msg = String(error.message || error);
+            if (msg.includes("OOM") || msg.includes("startsWith") || msg.includes("Aborted")) {
+                logMessage("  Error: Out of memory. Try a lower resolution or a shorter video.", "error");
+            } else {
+                logMessage(`  Error: ${msg}`, "error");
+            }
+        }
+
+        renderFileList();
+        
+        const etaDisplay = document.getElementById('etaDisplay');
+        if (etaDisplay && i < pendingItems.length - 1) {
+            etaDisplay.textContent = `⏱️ ${pendingItems.length - i - 1} files remaining...`;
+        }
+    }
+
+    if (isCancelled) {
+        for (const item of pendingItems) {
+            if (item.status === "processing" || item.status === "pending") {
+                item.status = "pending";
+            }
+        }
+        currentFlowState = "idle";
+        setProgress(0);
+        hideProgress();
+        releaseWakeLock();
+        clearBtn.innerText = "Clear";
+        logMessage("Cancelled by user.", "warning");
+        renderFileList();
+        updatePatchButton();
+        refreshIcons();
+        return;
+    }
+
+    currentFlowState = "completed";
+    lastSettings = {
+        vfi: document.getElementById("enableInterpolation")?.checked || false,
+        hdr: document.getElementById("enableHDR")?.checked || false,
+        res: document.getElementById("outputResolution")?.value || "1080",
+        turbo: document.getElementById("enableTurbo")?.checked || false,
+        fps: document.getElementById("targetFPS")?.value || "120",
+    };
+    setProgress(100);
+    releaseWakeLock();
+    logMessage(
+        `Done. ${successCount}/${pendingItems.length} file(s) patched successfully.`,
+        successCount === pendingItems.length ? "success" : "warning",
+    );
+    hideProgress();
+
+    const etaDisplay = document.getElementById('etaDisplay');
+    if (etaDisplay) etaDisplay.textContent = '✅ Done!';
+
+    clearBtn.innerText = "Clear";
+    clearBtn.disabled = false;
+    renderFileList();
+    updatePatchButton();
+    refreshIcons();
+});
+
+// ============================================================
+// HISTORY EVENTS
+// ============================================================
+historyHeader.addEventListener("click", () => {
+    const container = historyHeader.parentElement;
+    container.classList.toggle("collapsed");
+});
+
+clearHistoryBtn.addEventListener("click", async () => {
+    await clearAllRecords();
+    await renderHistoryList();
+});
+
+// ============================================================
+// VFI MODAL
+// ============================================================
+const enableInterpolation = document.getElementById("enableInterpolation");
+const vfiModal = document.getElementById("vfiModal");
+const closeVfiModalBtn = document.getElementById("closeVfiModalBtn");
+const cancelVfiBtn = document.getElementById("cancelVfiBtn");
+const confirmVfiBtn = document.getElementById("confirmVfiBtn");
+
+if (enableInterpolation && vfiModal) {
+    enableInterpolation.addEventListener("change", () => {
+        if (enableInterpolation.checked) {
+            vfiModal.classList.add("active");
+            lockScroll();
+        }
+        updateResolutionVisibility();
+        updatePatchButton();
+    });
+
+    const closeModal = () => {
+        vfiModal.classList.remove("active");
+        unlockScroll();
+        updateResolutionVisibility();
+        updatePatchButton();
+    };
+
+    const cancelModal = () => {
+        enableInterpolation.checked = false;
+        closeModal();
+    };
+
+    closeVfiModalBtn?.addEventListener("click", cancelModal);
+    cancelVfiBtn?.addEventListener("click", cancelModal);
+    confirmVfiBtn?.addEventListener("click", closeModal);
+
+    vfiModal.addEventListener("click", (e) => {
+        if (e.target === vfiModal) cancelModal();
+    });
+}
+
+// ============================================================
+// HDR MODAL
+// ============================================================
+const enableHDR = document.getElementById("enableHDR");
+const hdrModal = document.getElementById("hdrModal");
+const closeHdrModalBtn = document.getElementById("closeHdrModalBtn");
+const cancelHdrBtn = document.getElementById("cancelHdrBtn");
+const confirmHdrBtn = document.getElementById("confirmHdrBtn");
+
+if (enableHDR && hdrModal) {
+    enableHDR.addEventListener("change", () => {
+        if (enableHDR.checked) {
+            hdrModal.classList.add("active");
+            lockScroll();
+        }
+        updateResolutionVisibility();
+        updatePatchButton();
+    });
+
+    const closeHdrModal = () => {
+        hdrModal.classList.remove("active");
+        unlockScroll();
+        updateResolutionVisibility();
+        updatePatchButton();
+    };
+
+    const cancelHdrModal = () => {
+        enableHDR.checked = false;
+        closeHdrModal();
+    };
+
+    closeHdrModalBtn?.addEventListener("click", cancelHdrModal);
+    cancelHdrBtn?.addEventListener("click", cancelHdrModal);
+    confirmHdrBtn?.addEventListener("click", closeHdrModal);
+    hdrModal.addEventListener("click", (e) => {
+        if (e.target === hdrModal) cancelHdrModal();
+    });
+}
+
+// ============================================================
+// RESOLUTION CHANGE
+// ============================================================
+document.getElementById("outputResolution")?.addEventListener("change", updatePatchButton);
+
+// ============================================================
+// TUTORIAL MODAL
+// ============================================================
+const tutorialModal = document.getElementById("tutorialModal");
+const closeTutorialModal = document.getElementById("closeTutorialModal");
+const tutorialUploadBtn = document.getElementById("tutorialUploadBtn");
+const tutorialPatchBtn = document.getElementById("tutorialPatchBtn");
+const tutorialPlaceholder = document.getElementById("tutorialPlaceholder");
+
+if (tutorialModal) {
+    closeTutorialModal?.addEventListener("click", () => {
+        tutorialModal.classList.remove("active");
+        unlockScroll();
+        if (tutorialVideoContainer) {
+            tutorialVideoContainer.innerHTML = "";
+            tutorialVideoContainer.style.display = "none";
+        }
+        if (tutorialPlaceholder) tutorialPlaceholder.style.display = "block";
+    });
+
+    tutorialModal.addEventListener("click", (e) => {
+        if (e.target === tutorialModal) {
+            tutorialModal.classList.remove("active");
+            unlockScroll();
+            if (tutorialVideoContainer) {
+                tutorialVideoContainer.innerHTML = "";
+                tutorialVideoContainer.style.display = "none";
+            }
+            if (tutorialPlaceholder) tutorialPlaceholder.style.display = "block";
+        }
+    });
+}
+
+const UPLOAD_VIDEO_URL = "https://www.youtube.com/embed/--x7yN3thgI";
+const PATCH_VIDEO_URL = "https://www.youtube.com/embed/lT7GCn85VRk";
+
+tutorialUploadBtn?.addEventListener("click", () => {
+    playTutorialVideo(UPLOAD_VIDEO_URL);
+});
+
+tutorialPatchBtn?.addEventListener("click", () => {
+    playTutorialVideo(PATCH_VIDEO_URL);
+});
+
+const tiktokStudioBtn = document.getElementById("tiktokStudioBtn");
+if (tiktokStudioBtn && tutorialModal) {
+    tiktokStudioBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        tutorialModal.classList.add("active");
+        lockScroll();
+        if (tutorialVideoContainer) {
+            tutorialVideoContainer.style.display = "none";
+            tutorialVideoContainer.innerHTML = "";
+        }
+        if (tutorialPlaceholder) tutorialPlaceholder.style.display = "block";
+    });
+}
+
+// ============================================================
+// CHANGELOG
+// ============================================================
+const changelogContainer = document.getElementById("changelogContainer");
+if (changelogContainer) {
+    initChangelog(changelogContainer);
+}
+
+// ============================================================
+// INITIALIZE APP
+// ============================================================
+function initializeApp() {
+    refreshIcons();
+    renderHistoryList();
+    adjustMobileLayout();
+    window.addEventListener("resize", adjustMobileLayout);
+    initETADisplay();
+    updateResolutionVisibility();
+    updatePatchButton();
+}
+
+initializeApp(); 
