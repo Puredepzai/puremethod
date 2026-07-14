@@ -38,7 +38,7 @@
               <span class="checkmark"></span>
               <span class="label-text">fps Interpolation</span>
             </label>
-            <div class="setting-desc">Inflates frame count to fps</div>
+            <div class="setting-desc">Inflates frame count to 600 FPS</div>
 
             <label class="checkbox-container">
               <input type="checkbox" id="enableHDR" />
@@ -47,15 +47,7 @@
             </label>
             <div class="setting-desc">SDR → HDR10 (PQ, BT.2020)</div>
 
-            <div class="stat-item" style="margin-top: 10px;">
-              <span class="stat-label">🎯 Target FPS</span>
-              <select class="stat-select" id="targetFPS">
-                <option value="60">60 FPS</option>
-                <option value="120" selected>120 FPS</option>
-                <option value="240">240 FPS</option>
-                <option value="600">600 FPS</option>
-              </select>
-            </div>
+            <!-- 👇 ĐÃ XÓA PHẦN CHỌN FPS -->
           </div>
 
           <div class="interpolator-resolution" id="vfiResolutionBox" style="display: none;">
