@@ -454,3 +454,19 @@ export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
 
     return { newBuffer, newBytes, newView };
 }
+
+// Was missing entirely — app.js imports this name but it was never defined
+// or exported here. A missing named export throws a SyntaxError as soon as
+// the browser tries to load app.js, which stops the ENTIRE script before a
+// single line of it runs — no click handlers get attached anywhere on the
+// page. That import mismatch was the actual cause of "nothing is clickable".
+//
+// This currently returns null (meaning "no change made"), which app.js
+// already handles gracefully by falling back to the original file and
+// logging "Quality enhancement skipped, using original file." That keeps
+// the app fully working. If you want real metadata tweaks here later, use
+// inflateSampleTableVideo() above as a template (parseBoxes / updateBoxSize
+// from mp4-boxes.mjs).
+export function inflateQualityVideo(inputBytes, inputView, level = 1) {
+    return null;
+}
