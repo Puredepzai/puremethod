@@ -156,21 +156,9 @@ function buildStscPatch(inputBytes, inputView, stscBox, origStcoCount) {
 }
 
 // ============================================================
-// PHẦN 2: HÀM NÉN VIDEO TỐI ƯU - ĐÂY LÀ PHẦN QUAN TRỌNG NHẤT
+// PHẦN 2: HÀM NÉN VIDEO TỐI ƯU
 // ============================================================
 
-/**
- * Nén video xuống dưới ~19MB, giữ nguyên toàn bộ thời lượng gốc.
- *
- * Trước đây hàm này dùng "-crf 26 -fs 19.5M": ffmpeg sẽ NGỪNG GHI FILE
- * ngay khi đạt 19.5MB, tức là video output bị CẮT CỤT giữa chừng nếu
- * bản CRF-26 gốc dài hơn giới hạn đó — video mất đoạn cuối.
- *
- * Giờ đổi sang cách đúng hơn: đo thời lượng thật, tính ra bitrate cần
- * thiết để cả video (từ đầu đến cuối) vừa khít trong ~19MB, rồi encode
- * với bitrate đó. Video vẫn đủ độ dài, chỉ là bitrate thấp hơn đều
- * xuyên suốt thay vì bị cắt.
- */
 export async function compressVideoUnder20MB(
     inputBytes,
     { logMessage, setProgress, isCancelled, targetMB = 19 } = {},
@@ -188,7 +176,7 @@ export async function compressVideoUnder20MB(
     checkCancelled();
     const instance = await getFFmpeg(
         (msg, type) => log(msg, type),
-        (pct) => report(Math.round(pct * 0.5)), // ffmpeg's own progress covers the first half of our bar
+        (pct) => report(Math.round(pct * 0.5)),
     );
 
     const inputName = "compress_input.mp4";
@@ -198,7 +186,6 @@ export async function compressVideoUnder20MB(
         await instance.writeFile(inputName, inputBytes);
         checkCancelled();
 
-        // ---- Probe real duration + resolution from ffmpeg's own stderr log ----
         let duration = null;
         let srcWidth = null;
         let srcHeight = null;
@@ -221,12 +208,6 @@ export async function compressVideoUnder20MB(
         if (typeof instance.off === "function") instance.off("log", probeHandler);
         checkCancelled();
 
-        // Encoding a huge source at its native resolution (often 4K straight
-        // off a phone) single-threaded in WASM is what actually crashes the
-        // tab — the WASM heap has to hold raw decoded frames at full res.
-        // Cap the long edge at 1080p for this pass; that alone cuts memory
-        // use roughly 4x for a 4K source and makes hitting a size target
-        // realistic without OOM-ing the browser.
         const MAX_LONG_EDGE = 1080;
         let scaleFilter = null;
         if (srcWidth && srcHeight && Math.max(srcWidth, srcHeight) > MAX_LONG_EDGE) {
@@ -234,23 +215,18 @@ export async function compressVideoUnder20MB(
                 srcWidth >= srcHeight
                     ? `scale=${MAX_LONG_EDGE}:-2`
                     : `scale=-2:${MAX_LONG_EDGE}`;
-            log(`  📐 Source is ${srcWidth}x${srcHeight} — downscaling to ~${MAX_LONG_EDGE}p to stay within browser memory limits.`, "info");
+            // 👇 ĐÃ XÓA LOG
         }
 
         const audioBitrateBps = 96000;
         let videoBitrateKbps;
         if (duration && duration > 0.5) {
             const targetBits = targetMB * 1024 * 1024 * 8;
-            const safetyMargin = 0.92; // headroom for container/muxing overhead
+            const safetyMargin = 0.92;
             const rawVideoBps = (targetBits / duration) * safetyMargin - audioBitrateBps;
             videoBitrateKbps = Math.max(150, Math.round(rawVideoBps / 1000));
-            log(
-                `  🎯 Duration ${duration.toFixed(1)}s → target bitrate ≈ ${videoBitrateKbps}kbps for <${targetMB}MB`,
-                "info",
-            );
+            // 👇 ĐÃ XÓA LOG
         } else {
-            // Couldn't read duration — fall back to a conservative flat bitrate
-            // rather than guessing wrong and overshooting the size target.
             videoBitrateKbps = 1000;
             log("  ⚠️ Could not read video duration, using a conservative fallback bitrate.", "warning");
         }
@@ -271,7 +247,7 @@ export async function compressVideoUnder20MB(
             outputName,
         ];
 
-        log(`  ⚙️ Encoding at ~${videoBitrateKbps}kbps...`, "info");
+        // 👇 ĐÃ XÓA LOG
         report(50);
         const ret = await instance.exec(baseArgs);
         if (ret !== 0 && ret !== undefined) {
@@ -292,18 +268,11 @@ export async function compressVideoUnder20MB(
 }
 
 // ============================================================
-// PHẦN 3: HÀM TÍCH HỢP CHÍNH (DÙNG HÀM NÀY)
+// PHẦN 3: HÀM TÍCH HỢP CHÍNH
 // ============================================================
 
-/**
- * HÀM CHÍNH: Nén video xuống dưới 20MB với chất lượng cao nhất
- * Đây là hàm duy nhất bạn cần gọi từ bên ngoài
- */
 export async function processAndCompressVideo(inputBytes, options = {}) {
-    // Bước 1: Nén video (giữ nguyên độ dài, hạ bitrate cho vừa dung lượng)
     const compressedBytes = await compressVideoUnder20MB(inputBytes, options);
-
-    // Bước 2: Tối ưu metadata (không làm thay đổi chất lượng)
     const compressedView = new DataView(
         compressedBytes.buffer,
         compressedBytes.byteOffset,
@@ -324,7 +293,7 @@ export async function processAndCompressVideo(inputBytes, options = {}) {
 }
 
 // ============================================================
-// PHẦN 4: CÁC HÀM CŨ (GIỮ LẠI ĐỂ TƯƠNG THÍCH)
+// PHẦN 4: CÁC HÀM CŨ
 // ============================================================
 
 export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
@@ -523,7 +492,6 @@ export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
 }
 
 export function inflateQualityVideo(inputBytes, inputView, level = 1) {
-    // Giữ nguyên code cũ - chỉ cập nhật metadata, không thay đổi chất lượng
     const fileSize = inputBytes.length;
     const topBoxes = parseBoxes(inputBytes, inputView, 0, fileSize);
     const moovBox = topBoxes.find(b => b.type === "moov");
@@ -567,7 +535,5 @@ export function inflateQualityVideo(inputBytes, inputView, level = 1) {
 }
 
 export async function createFakeVideo(inputBytes) {
-    // KHÔNG KHUYẾN KHÍCH DÙNG - Có thể bị TikTok phát hiện và xử phạt
-    // Thay vào đó, dùng processAndCompressVideo
     return processAndCompressVideo(inputBytes);
 }
