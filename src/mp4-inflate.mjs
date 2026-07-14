@@ -1,4 +1,3 @@
-```javascript
 import {
     getBoxHeaderSize,
     parseBoxes,
@@ -579,4 +578,3 @@ export async function processAndCompressVideo(inputBytes) {
         newView: compressedView
     };
 }
-```
