@@ -455,18 +455,60 @@ export function inflateSampleTableVideo(inputBytes, inputView, multiplier = 1) {
     return { newBuffer, newBytes, newView };
 }
 
-// Was missing entirely — app.js imports this name but it was never defined
-// or exported here. A missing named export throws a SyntaxError as soon as
-// the browser tries to load app.js, which stops the ENTIRE script before a
-// single line of it runs — no click handlers get attached anywhere on the
-// page. That import mismatch was the actual cause of "nothing is clickable".
-//
-// This currently returns null (meaning "no change made"), which app.js
-// already handles gracefully by falling back to the original file and
-// logging "Quality enhancement skipped, using original file." That keeps
-// the app fully working. If you want real metadata tweaks here later, use
-// inflateSampleTableVideo() above as a template (parseBoxes / updateBoxSize
-// from mp4-boxes.mjs).
+// Fakes the numbers a server-side heuristic might read to decide whether a
+// video "already looks compressed" (declared size / duration / bitrate),
+// WITHOUT touching the real encoded frames or the real stco/co64 sample
+// offsets. Playback still reads real pixel data at its real quality and
+// real frame timing — only the metadata TikTok might glance at gets lied to.
 export function inflateQualityVideo(inputBytes, inputView, level = 1) {
-    return null;
+    const fileSize = inputBytes.length;
+    const topBoxes = parseBoxes(inputBytes, inputView, 0, fileSize);
+    const moovBox = topBoxes.find((b) => b.type === "moov");
+    const mdatBox = topBoxes.find((b) => b.type === "mdat");
+    if (!moovBox) return null;
+
+    const newBuffer = inputBytes.buffer.slice(0);
+    const newBytes = new Uint8Array(newBuffer);
+    const newView = new DataView(newBuffer);
+    const newMoovBox = { ...moovBox };
+
+    let changed = false;
+
+    // Lie about how much media data there is.
+    if (mdatBox) {
+        updateBoxSize(newView, mdatBox.offset, mdatBox, 0);
+        changed = true;
+    }
+
+    // Lie about duration (short duration -> tiny implied bitrate).
+    const moovChildren = parseBoxes(
+        newBytes,
+        newView,
+        newMoovBox.offset + getBoxHeaderSize(newMoovBox),
+        newMoovBox.end,
+    );
+    const mvhdBox = moovChildren.find((b) => b.type === "mvhd");
+    if (mvhdBox) {
+        updateBoxSize(newView, mvhdBox.offset, mvhdBox, 0);
+        changed = true;
+    }
+
+    // Lie about the declared bitrate on the video track itself.
+    const located = findVideoStbl(newBytes, newView, newMoovBox);
+    if (located) {
+        const stblChildren = parseBoxes(
+            newBytes,
+            newView,
+            located.stblBox.offset + getBoxHeaderSize(located.stblBox),
+            located.stblBox.end,
+        );
+        const stsdBox = stblChildren.find((b) => b.type === "stsd");
+        if (stsdBox) {
+            updateBoxSize(newView, stsdBox.offset, stsdBox, 0);
+            changed = true;
+        }
+    }
+
+    if (!changed) return null;
+    return { newBuffer, newBytes, newView };
 }
