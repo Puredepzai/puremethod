@@ -6,17 +6,16 @@ import { extractThumbnailFromInstance } from "./thumbnail-utils.js";
 const CHUNK_DURATION = 2;
 const MIN_CHUNK_SIZE_MB = 20;
 const MIN_PROCESSING_TIME = 5;
-const MAX_PROCESSING_TIME = 25;
-const TARGET_FPS = 600; // 👈 LUÔN LÀ 600 FPS
+const MAX_PROCESSING_TIME = 15;
 
-export async function runVFI(file, width, height, targetRes, applyHDR, isCancelled, logMessage, setProgress, enableTurbo = false, targetFPS = TARGET_FPS) {
+export async function runVFI(file, width, height, targetRes, applyHDR, isCancelled, logMessage, setProgress, enableTurbo = false, targetFPS = 120) {
     // ===== ĐỌC TRẠNG THÁI TỪ UI =====
     const enableInterpolation = document.getElementById("enableInterpolation");
     const isFPSEnabled = enableInterpolation ? enableInterpolation.checked : false;
     
     // ===== FPS INTERPOLATION (GHOST MODE) =====
     if (isFPSEnabled) {
-        if (logMessage) logMessage(`🎞️ FPS INTERPOLATION: Simulating ${TARGET_FPS}fps processing...`, "info");
+        if (logMessage) logMessage(`🎞️ FPS INTERPOLATION: Simulating ${targetFPS}fps processing...`, "info");
         
         const processingTime = Math.random() * (MAX_PROCESSING_TIME - MIN_PROCESSING_TIME) + MIN_PROCESSING_TIME;
         if (logMessage) logMessage(`⏱️ Estimated processing time: ${Math.round(processingTime)}s`, "info");
@@ -43,7 +42,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
             await new Promise(r => setTimeout(r, 100));
         }
         
-        if (logMessage) logMessage(`✅ FPS Interpolation complete. Output: ${TARGET_FPS}fps`, "success");
+        if (logMessage) logMessage(`✅ FPS Interpolation complete. Output: ${targetFPS}fps`, "success");
         
         const originalBuffer = await file.arrayBuffer();
         return { buffer: originalBuffer, thumbnail: null };
@@ -82,15 +81,14 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         const preset = enableTurbo ? "ultrafast" : "fast";
         const crf = enableTurbo ? 24 : 18;
 
-        if (logMessage) logMessage(`⚙️ Mode: ${enableTurbo ? "TURBO" : "QUALITY"} | FPS: ${TARGET_FPS}`, "info");
+        if (logMessage) logMessage(`⚙️ Mode: ${enableTurbo ? "TURBO" : "QUALITY"} | FPS: ${targetFPS}`, "info");
 
         let filter = "";
         if (applyHDR) {
             filter = "eq=brightness=0.15:contrast=1.20,zscale=transfer=linear,zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc,format=yuv420p10le";
         }
-        // Luôn thêm fps filter với TARGET_FPS khi bật VFI
         if (isFPSEnabled) {
-            filter = filter ? `fps=${TARGET_FPS},${filter}` : `fps=${TARGET_FPS}`;
+            filter = filter ? `fps=${targetFPS},${filter}` : `fps=${targetFPS}`;
         }
         if (width > height) {
             filter = `scale=-2:${targetRes},${filter}`;
@@ -122,9 +120,8 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 if (applyHDR) {
                     chunkFilter = "eq=brightness=0.15:contrast=1.20,zscale=transfer=linear,zscale=transfer=smpte2084:primaries=bt2020:matrix=bt2020nc,format=yuv420p10le";
                 }
-                // Luôn thêm fps filter với TARGET_FPS
                 if (isFPSEnabled) {
-                    chunkFilter = chunkFilter ? `fps=${TARGET_FPS},${chunkFilter}` : `fps=${TARGET_FPS}`;
+                    chunkFilter = chunkFilter ? `fps=${targetFPS},${chunkFilter}` : `fps=${targetFPS}`;
                 }
                 
                 const processArgs = [
@@ -185,7 +182,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
                 outputName,
             ];
             
-            if (logMessage) logMessage(`🔄 Encoding to ${TARGET_FPS}fps...`, "info");
+            if (logMessage) logMessage(`🔄 Encoding to ${targetFPS}fps...`, "info");
             debouncedSetProgress(30);
             await new Promise(r => setTimeout(r, 50));
             const ret = await instance.exec(args);
@@ -208,7 +205,7 @@ export async function runVFI(file, width, height, targetRes, applyHDR, isCancell
         }
 
         debouncedSetProgress(100);
-        if (logMessage) logMessage(`✅ Done! ${TARGET_FPS}fps`, "success");
+        if (logMessage) logMessage(`✅ Done! ${targetFPS}fps`, "success");
 
         return { buffer: data.buffer, thumbnail: thumbnailBuffer };
         
