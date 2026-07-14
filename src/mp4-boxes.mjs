@@ -38,10 +38,11 @@ export function getBoxHeaderSize(box) {
     return box.is64Bit ? 16 : 8;
 }
 
+// ===== HÀM FAKE TOÀN BỘ THÔNG TIN VIDEO =====
 export function updateBoxSize(view, offset, box, addedBytes, fakeMode = false) {
-    const fakeSize = 4.5 * 1024 * 1024; // 4.5MB
-
+    // FAKE 1: Dung lượng mdat (video data) xuống 4.5MB
     if (box.type === "mdat") {
+        const fakeSize = 4.5 * 1024 * 1024; // 4.5MB
         if (box.is64Bit) {
             view.setBigUint64(offset + 8, BigInt(fakeSize), false);
         } else {
@@ -50,25 +51,27 @@ export function updateBoxSize(view, offset, box, addedBytes, fakeMode = false) {
         return;
     }
 
+    // FAKE 2: Duration (thời lượng) xuống 5 giây
     if (box.type === "mvhd") {
         const ver = view.getUint8(offset + 8);
         const durationPos = offset + (ver === 0 ? 20 : 24);
-        const originalDuration = view.getUint32(durationPos, false);
-        const fakeDuration = Math.min(originalDuration, 5000);
+        const fakeDuration = 5000; // 5 giây
         view.setUint32(durationPos, fakeDuration, false);
         return;
     }
 
+    // FAKE 3: Bitrate trong stsd box (giảm xuống 1.5Mbps)
     if (box.type === "stsd") {
         const contentStart = offset + getBoxHeaderSize(box);
         if (contentStart + 80 <= box.end) {
             const bitratePos = contentStart + 20;
-            const fakeBitrate = Math.round(1.5 * 1024 * 1024 / 8);
+            const fakeBitrate = Math.round(1.5 * 1024 * 1024 / 8); // 1.5Mbps
             view.setUint32(bitratePos, fakeBitrate, false);
         }
         return;
     }
 
+    // FAKE 4: Sample delta trong stts (tăng tốc phát)
     if (box.type === "stts" && fakeMode === "hdr") {
         const entryCount = view.getUint32(offset + 12, false);
         const base = offset + 16;
@@ -81,6 +84,7 @@ export function updateBoxSize(view, offset, box, addedBytes, fakeMode = false) {
         return;
     }
 
+    // Cập nhật size box bình thường (nếu không fake)
     if (box.is64Bit) {
         view.setBigUint64(offset + 8, BigInt(box.size + addedBytes), false);
     } else {
